@@ -1,10 +1,11 @@
-import { Module } from '@nestjs/common';
-import { ColegioController } from './colegio.controller';
-import { ColegioService } from './colegio.service';
+import { Module } from "@nestjs/common";
+import { ColegiosService } from "./colegio.service";
+import { ColegiosController } from "./colegio.controller";
+import { PrismaService } from "src/prisma/prisma.service";
 
 @Module({
-  controllers: [ColegioController],
-  providers: [ColegioService],
-  exports: [ColegioService],
+  controllers: [ColegiosController],
+  providers: [ColegiosService, PrismaService],
+  exports: [ColegiosService],
 })
-export class ColegioModule {}
+export class ColegiosModule {}
