@@ -5,6 +5,7 @@ import { UsuarioModule } from './modules/usuario/usuario.module';
 import { PadreModule } from './modules/padre/padre.module';
 import { ColegioModule } from './modules/colegio/colegio.module';
 import { EstudianteModule } from './modules/estudiante/estudiante.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { EstudianteModule } from './modules/estudiante/estudiante.module';
     PrismaModule,
     UsuarioModule,
     ColegioModule,
+    AuthModule,
     PadreModule,
     EstudianteModule,
   ],
