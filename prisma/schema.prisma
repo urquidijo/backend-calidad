@@ -1,0 +1,88 @@
+// prisma/schema.prisma
+// prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Rol {
+  SUPERADMIN
+  ADMIN_COLEGIO
+  CONDUCTOR
+  PADRE
+}
+
+model Colegio {
+  id           Int          @id @default(autoincrement())
+  nombre       String       @unique
+  direccion    String?
+  lat          Float?
+  lon          Float?
+  activo       Boolean      @default(true)
+
+  // relaciones
+  usuarios     Usuario[]    @relation("ColegioUsuarios")
+  estudiantes  Estudiante[]
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([activo])
+}
+
+model Usuario {
+  id            Int       @id @default(autoincrement())
+  rol           Rol
+  email         String    @unique
+  hashPassword  String
+  nombre        String
+  telefono      String?
+  activo        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // N:M con estudiantes (padre ↔ hijos)
+  hijos         PadreEstudiante[]
+
+  // Si es ADMIN_COLEGIO o CONDUCTOR puede pertenecer a un colegio; PADRE/SUPERADMIN normalmente null
+  colegioId     Int?
+  colegio       Colegio?   @relation("ColegioUsuarios", fields: [colegioId], references: [id], onDelete: SetNull)
+
+  @@index([rol, activo])
+}
+
+model Estudiante {
+  id         Int       @id @default(autoincrement())
+  colegioId  Int
+  colegio    Colegio   @relation(fields: [colegioId], references: [id], onDelete: Cascade)
+
+  // Identificador interno del estudiante único dentro del colegio
+  codigo     String
+  ci         String?
+  nombre     String
+  curso      String?
+  activo     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  padres     PadreEstudiante[]
+
+  @@unique([colegioId, codigo])   // único por colegio
+  @@index([colegioId, activo])
+}
+
+model PadreEstudiante {
+  padreId       Int
+  estudianteId  Int
+
+  padre         Usuario    @relation(fields: [padreId], references: [id], onDelete: Cascade)
+  estudiante    Estudiante @relation(fields: [estudianteId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime   @default(now())
+
+  @@id([padreId, estudianteId])   // evita duplicados
+}
