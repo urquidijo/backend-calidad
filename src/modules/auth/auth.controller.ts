@@ -4,6 +4,7 @@ import { LoginDto } from './dto/login.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthUser } from './decorators/user.decorator';
+import { RegisterDto } from './dto/register.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -20,5 +21,10 @@ export class AuthController {
   @Get('profile')
   profile(@AuthUser() user: any) {
     return { user };
+  }
+
+  @Post('register')
+  async register(@Body() dto: RegisterDto) {
+    return this.auth.register(dto);
   }
 }
