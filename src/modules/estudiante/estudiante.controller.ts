@@ -1,17 +1,28 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
-import { EstudianteService } from './estudiante.service';
-import { CreateEstudianteDto } from './dto/create-estudiante.dto';
-import { LookupEstudianteDto } from './dto/lookup-estudiante.dto';
+// src/modules/estudiante/estudiante.controller.ts
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Query,
+} from "@nestjs/common";
+import { EstudianteService } from "./estudiante.service";
+import { VerifyStudentDto } from "./dto/verify-student.dto";
 
-@Controller('estudiantes')
+@Controller("colegios/:colegioId/estudiantes")
 export class EstudianteController {
-  constructor(private readonly service: EstudianteService) {}
-  @Post()
-  create(@Body() dto: CreateEstudianteDto) {
-    return this.service.create(dto);
-  }
-  @Get('lookup')
-  lookup(@Query() q: LookupEstudianteDto) {
-    return this.service.lookup(q);
+  constructor(private readonly svc: EstudianteService) {}
+
+  @Get("verificar")
+  async verificar(
+    @Param("colegioId", ParseIntPipe) colegioId: number,
+    @Query() q: VerifyStudentDto
+  ) {
+    if (!q.ci && !q.codigo) {
+      throw new BadRequestException("Debes enviar ci o codigo");
+    }
+    const estudiante = await this.svc.verificarEstudiante(colegioId, q);
+    return { estudiante }; // { estudiante: null } si no existe
   }
 }

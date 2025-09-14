@@ -1,31 +1,36 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { CreateEstudianteDto } from './dto/create-estudiante.dto';
-import { LookupEstudianteDto } from './dto/lookup-estudiante.dto';
+// src/modules/estudiante/estudiante.service.ts
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "src/prisma/prisma.service";
+import { VerifyStudentDto } from "./dto/verify-student.dto";
+import { Estudiante, Prisma } from "@prisma/client";
+
+type EstudianteVerificado = Pick<Estudiante, "id" | "nombre" | "curso" | "colegioId">;
 
 @Injectable()
 export class EstudianteService {
-  constructor(private prisma: PrismaService) {}
-  async create(dto: CreateEstudianteDto) {
-    try {
-      return await this.prisma.estudiante.create({ data: dto });
-    } catch (e: any) {
-      if (e.code === 'P2002') throw new BadRequestException('Código ya existe en ese colegio');
-      throw e;
-    }
-  }
-  async lookup(dto: LookupEstudianteDto) {
-    if (!dto.codigo && !dto.ci) throw new BadRequestException('Envíe "codigo" o "ci"');
-    const est = await this.prisma.estudiante.findFirst({
-      where: {
-        colegioId: dto.colegioId,
-        ...(dto.codigo ? { codigo: dto.codigo } : {}),
-        ...(dto.ci ? { ci: dto.ci } : {}),
-        activo: true,
-      },
-      select: { id: true, nombre: true, colegioId: true, codigo: true, ci: true, curso: true, activo: true },
-    });
-    if (!est) throw new NotFoundException('No se encontró el estudiante en ese colegio');
-    return { ok: true, estudiante: est };
+  constructor(private readonly prisma: PrismaService) {}
+
+  async verificarEstudiante(
+    colegioId: number,
+    q: VerifyStudentDto
+  ): Promise<EstudianteVerificado | null> {
+    const where: Prisma.EstudianteWhereInput = {
+      colegioId,
+      activo: true,
+      ...(q.ci
+        ? { ci: q.ci.trim() }
+        : q.codigo
+        ? { codigo: q.codigo.trim() }
+        : {}),
+    };
+
+    const select: Prisma.EstudianteSelect = {
+      id: true,
+      nombre: true,
+      curso: true,
+      colegioId: true,
+    };
+
+    return this.prisma.estudiante.findFirst({ where, select });
   }
 }
