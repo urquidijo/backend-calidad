@@ -1,21 +1,32 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
-import { PadreService } from './padre.service';
-import { AddHijoDto } from './dto/add-hijo.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { AuthUser } from '../auth/decorators/user.decorator';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  Request,
+  UseGuards,
+} from "@nestjs/common";
+import { PadreService } from "./padre.service";
+import { LinkStudentDto } from "./dto/link-student.dto";
+import { JwtAuthGuard } from "src/modules/auth/guards/jwt-auth.guard"; // ajusta ruta de tu guard
 
-@Controller('padres')
+@Controller("parent/children")
 @UseGuards(JwtAuthGuard)
 export class PadreController {
-  constructor(private readonly service: PadreService) {}
+  constructor(private readonly svc: PadreService) {}
 
-  @Post('hijos')
-  addHijo(@AuthUser() user: { sub: number; rol: string }, @Body() dto: AddHijoDto) {
-    return this.service.addHijo(user.sub, dto.estudianteId);
+  @Get()
+  async list(@Request() req: any) {
+    const padreId = req.user?.sub; // asumiendo JWT con { sub: userId }
+    if (!padreId) throw new BadRequestException("No autenticado");
+    return this.svc.listChildren(padreId);
   }
 
-  @Get('hijos')
-  listHijos(@AuthUser() user: { sub: number; rol: string }) {
-    return this.service.listHijos(user.sub);
+  @Post("link")
+  async link(@Request() req: any, @Body() dto: LinkStudentDto) {
+    const padreId = req.user?.sub;
+    if (!padreId) throw new BadRequestException("No autenticado");
+    return this.svc.linkChild(padreId, dto);
   }
 }
