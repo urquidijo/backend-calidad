@@ -1,5 +1,3 @@
-// prisma/schema.prisma
-// prisma/schema.prisma
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -27,6 +25,7 @@ model Colegio {
   // relaciones
   usuarios     Usuario[]    @relation("ColegioUsuarios")
   estudiantes  Estudiante[]
+  buses        Bus[]
 
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -52,6 +51,9 @@ model Usuario {
   colegioId     Int?
   colegio       Colegio?   @relation("ColegioUsuarios", fields: [colegioId], references: [id], onDelete: SetNull)
 
+  // si es conductor puede tener buses asignados
+  busesConductor Bus[]
+
   @@index([rol, activo])
 }
 
@@ -60,16 +62,16 @@ model Estudiante {
   colegioId  Int
   colegio    Colegio   @relation(fields: [colegioId], references: [id], onDelete: Cascade)
 
-  // Identificador interno del estudiante único dentro del colegio
   codigo     String
   ci         String?
   nombre     String
   curso      String?
   activo     Boolean   @default(true)
   createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  updatedAt  DateTime  @default(now())
 
-  padres     PadreEstudiante[]
+  padres         PadreEstudiante[]
+  buses          EstudianteBus[]
 
   @@unique([colegioId, codigo])   // único por colegio
   @@index([colegioId, activo])
@@ -84,5 +86,36 @@ model PadreEstudiante {
 
   createdAt     DateTime   @default(now())
 
-  @@id([padreId, estudianteId])   // evita duplicados
+  @@id([padreId, estudianteId])
+}
+
+model Bus {
+  id          Int       @id @default(autoincrement())
+  colegioId   Int
+  codigo      String    // identificador único del bus dentro del colegio
+  nombre      String?   // nombre de la ruta o descripción
+  placa       String?   // placa del bus
+  conductorId Int?      // usuario con rol CONDUCTOR
+  activo      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now())
+
+  colegio     Colegio   @relation(fields: [colegioId], references: [id], onDelete: Cascade)
+  conductor   Usuario?  @relation(fields: [conductorId], references: [id], onDelete: SetNull)
+  estudiantes EstudianteBus[]
+
+  @@unique([colegioId, codigo])
+  @@index([colegioId, activo])
+}
+
+model EstudianteBus {
+  estudianteId Int
+  busId        Int
+
+  estudiante   Estudiante @relation(fields: [estudianteId], references: [id], onDelete: Cascade)
+  bus          Bus        @relation(fields: [busId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime   @default(now())
+
+  @@id([estudianteId, busId])
 }

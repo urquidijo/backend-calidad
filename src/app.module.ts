@@ -6,6 +6,8 @@ import { PadreModule } from './modules/padre/padre.module';
 import { ColegiosModule } from './modules/colegio/colegio.module';
 import { EstudianteModule } from './modules/estudiante/estudiante.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BusesModule } from './modules/buses/buses.module';
+import { EstudianteBusModule } from './modules/estudianteBus/estudianteBus.module';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { AuthModule } from './modules/auth/auth.module';
     AuthModule,
     PadreModule,
     EstudianteModule,
+    BusesModule,
+    EstudianteBusModule,
   ],
 })
 export class AppModule {}

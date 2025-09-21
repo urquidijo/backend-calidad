@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "src/prisma/prisma.service";
 import { CreateColegioDto } from "./dto/create-colegio.dto";
 import { QueryColegioDto } from "./dto/query-colegio.dto";
@@ -49,5 +49,14 @@ export class ColegiosService {
     ]);
 
     return { items, total, skip, take };
+  }
+
+   async findOne(schoolId: number) {
+    const s = await this.prisma.colegio.findUnique({
+      where: { id: schoolId },
+      select: { id: true, nombre: true, direccion: true, lat: true, lon: true },
+    });
+    if (!s) throw new NotFoundException("Colegio no encontrado");
+    return s;
   }
 }

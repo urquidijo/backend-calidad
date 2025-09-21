@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Query } from "@nestjs/common";
 import { ColegiosService } from "./colegio.service";
 import { CreateColegioDto } from "./dto/create-colegio.dto";
 import { QueryColegioDto } from "./dto/query-colegio.dto";
@@ -17,4 +17,11 @@ export class ColegiosController {
   list(@Query() q: QueryColegioDto) {
     return this.svc.list(q);
   }
+   @Get(":id")
+  async findOne(@Param("id", ParseIntPipe) id: number) {
+    const school = await this.svc.findOne(id);
+    // devolvemos directamente la entidad (TrackChildScreen normaliza)
+    return { school };
+  }
+  
 }

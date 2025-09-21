@@ -7,8 +7,9 @@ import {
   ParseIntPipe,
   Query,
 } from "@nestjs/common";
-import { EstudianteService } from "./estudiante.service";
+import { EstudianteService } from './estudiante.service';
 import { VerifyStudentDto } from "./dto/verify-student.dto";
+
 
 @Controller("colegios/:colegioId/estudiantes")
 export class EstudianteController {
@@ -24,5 +25,12 @@ export class EstudianteController {
     }
     const estudiante = await this.svc.verificarEstudiante(colegioId, q);
     return { estudiante }; // { estudiante: null } si no existe
+  }
+
+  @Get(":studentId/bus")
+  async getBusForStudent(@Param("studentId", ParseIntPipe) studentId: number) {
+    const bus = await this.svc.findBusByStudent(studentId);
+    // devolvemos { bus } o { item }? La pantalla acepta varias formas — devolvemos { bus }
+    return { bus };
   }
 }
