@@ -8,24 +8,32 @@ import {
   Post,
 } from '@nestjs/common';
 import { EstudianteBusService } from './estudianteBus.service';
+import { BusSimulatorService } from '../buses/bus-simulator.service';
 
 @Controller('buses')
 export class EstudianteBusController {
-  constructor(private readonly svc: EstudianteBusService) {}
+  constructor(private readonly svc: EstudianteBusService,private readonly simulator: BusSimulatorService,) {}
+  
 
-  @Post(':id/start')
-  startRoute(@Param('id', ParseIntPipe) busId: number) {
-    return this.svc.startRoute(busId);
-  }
+// src/modules/estudiante/estudianteBus.controller.ts
+@Post(':id/start')
+async startRoute(@Param('id', ParseIntPipe) busId: number) {
+  const bus = await this.svc.startRoute(busId);
+  await this.simulator.start(busId); // 🚀 arranca simulación al iniciar ruta
+  return { status: bus!.status, bus };
+}
+
 
   @Post(':id/end')
-  endRoute(@Param('id', ParseIntPipe) busId: number) {
-    return this.svc.endRoute(busId);
+  async endRoute(@Param('id', ParseIntPipe) busId: number) {
+    const bus = await this.svc.endRoute(busId);
+    return { status: bus!.status, bus };
   }
 
   @Post(':id/reset')
-  resetRoute(@Param('id', ParseIntPipe) busId: number) {
-    return this.svc.resetRoute(busId);
+  async resetRoute(@Param('id', ParseIntPipe) busId: number) {
+    const bus = await this.svc.resetRoute(busId);
+    return { status: bus.status, bus };
   }
 
   @Patch(':id/location')
@@ -40,14 +48,10 @@ export class EstudianteBusController {
   getLocation(@Param('id', ParseIntPipe) busId: number) {
     return this.svc.getBusLocation(busId);
   }
-  
+
   @Get(':idStudent/bus')
   async getBus(@Param('idStudent', ParseIntPipe) studentId: number) {
     const bus = await this.svc.findBusByStudent(studentId);
     return { bus }; // 🔹 siempre devuelve un objeto { bus: ... }
   }
 }
-
-
-  
-

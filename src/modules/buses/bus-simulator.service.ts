@@ -30,47 +30,40 @@ export class BusSimulatorService {
     if (!bus) throw new Error(`Bus ${busId} no encontrado`);
     if (!bus.estudiantes.length)
       throw new Error('El bus no tiene estudiantes asignados');
+    if (!bus.colegio?.lat || !bus.colegio?.lon)
+      throw new Error(`El colegio del bus ${busId} no tiene coordenadas`);
 
-    // 🔹 Construimos la ruta (paradas + colegio)
+    // 🔹 Ruta = paradas + colegio
     const route = [
       ...bus.estudiantes
-        .filter(
-          (eb) => eb.estudiante.lat != null && eb.estudiante.lon != null,
-        )
-        .map((eb) => ({
-          lat: eb.estudiante.lat!,
-          lon: eb.estudiante.lon!,
-        })),
+        .filter((eb) => eb.estudiante.lat != null && eb.estudiante.lon != null)
+        .map((eb) => ({ lat: eb.estudiante.lat!, lon: eb.estudiante.lon! })),
+      { lat: bus.colegio.lat, lon: bus.colegio.lon },
     ];
 
-    if (!bus.colegio?.lat || !bus.colegio?.lon) {
-      throw new Error(
-        `El colegio del bus ${busId} no tiene coordenadas registradas`,
-      );
-    }
-
-    route.push({ lat: bus.colegio.lat, lon: bus.colegio.lon });
-
     if (route.length < 2) {
-      throw new Error(
-        `No se pudo construir una ruta válida para el bus ${busId}`,
-      );
+      throw new Error(`Ruta inválida para el bus ${busId}`);
     }
+
+    // Estado inicial EN_RUTA
+    await this.prisma.bus.update({
+      where: { id: busId },
+      data: { status: 'EN_RUTA' },
+    });
 
     let currentIndex = 0;
     let t = 0;
-    const step = 0.05; // velocidad (0.01 = lento, 0.1 = rápido)
+    const step = 0.05;
 
     this.intervals[busId] = setInterval(async () => {
       const start = route[currentIndex];
-      const end = route[(currentIndex + 1) % route.length];
+      const end = route[currentIndex + 1];
 
       t += step;
       if (t >= 1) {
         currentIndex++;
         t = 0;
 
-        // Si llegó al colegio (último punto de la ruta)
         if (currentIndex >= route.length - 1) {
           this.stop(busId);
           await this.prisma.bus.update({
@@ -95,14 +88,22 @@ export class BusSimulatorService {
       });
 
       this.logger.debug(`Bus ${busId} moviéndose: ${lat}, ${lon}`);
-    }, 3000); // cada 3 segundos
+    }, 3000);
   }
 
-  stop(busId: number) {
+  async stop(
+    busId: number,
+    newStatus: 'FUERA_DE_SERVICIO' | 'EN_COLEGIO' = 'FUERA_DE_SERVICIO',
+  ) {
     if (this.intervals[busId]) {
       clearInterval(this.intervals[busId]);
       delete this.intervals[busId];
       this.logger.log(`Simulación detenida para bus ${busId}`);
+
+      await this.prisma.bus.update({
+        where: { id: busId },
+        data: { status: newStatus },
+      });
     }
   }
 }
