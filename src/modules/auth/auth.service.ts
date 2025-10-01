@@ -10,7 +10,6 @@ export class AuthService {
   constructor(private prisma: PrismaService, private jwt: JwtService) {}
 
   async validateUser(email: string, password: string) {
-    // normaliza email (mismo criterio que register)
     const e = email.trim().toLowerCase();
 
     const user = await this.prisma.usuario.findUnique({
@@ -21,21 +20,28 @@ export class AuthService {
         rol: true,
         nombre: true,
         activo: true,
-        hashPassword: true, // 👈 ¡explícito!
+        hashPassword: true,
       },
     });
 
     if (!user || !user.activo) return null;
 
-    // protege contra hash faltante
-    if (!user.hashPassword) return null;
+    // 🚍 Caso especial: conductor → compara contraseña en texto plano
+    if (user.rol === Rol.CONDUCTOR) {
+      if (user.hashPassword === password) {
+        const { hashPassword, ...safe } = user;
+        return safe;
+      }
+      return null;
+    }
 
+    // 👨‍👩‍👧 Padres y otros → usa bcrypt
+    if (!user.hashPassword) return null;
     const ok = await bcrypt.compare(password, user.hashPassword);
     if (!ok) return null;
 
-    // devuelve sin el hash
     const { hashPassword, ...safe } = user;
-    return safe; // { id, email, rol, nombre, activo }
+    return safe;
   }
 
   sign(user: { id: number; email: string; rol: Rol }) {
@@ -61,7 +67,11 @@ export class AuthService {
       select: { id: true, email: true, rol: true, nombre: true },
     });
 
-    const access_token = this.sign({ id: user.id, email: user.email, rol: user.rol as Rol });
+    const access_token = this.sign({
+      id: user.id,
+      email: user.email,
+      rol: user.rol as Rol,
+    });
     return { access_token, user };
   }
 }
