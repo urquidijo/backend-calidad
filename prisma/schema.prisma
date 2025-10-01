@@ -62,6 +62,10 @@ model Estudiante {
   colegioId  Int
   colegio    Colegio   @relation(fields: [colegioId], references: [id], onDelete: Cascade)
 
+  direccion  String?
+  lat        Float?
+  lon        Float?
+
   codigo     String
   ci         String?
   nombre     String
