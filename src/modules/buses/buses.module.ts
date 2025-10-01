@@ -8,5 +8,6 @@ import { BusSimulatorController } from "./bus-simulator.controller";
 @Module({
   controllers: [BusesController,BusSimulatorController],
   providers: [BusesService, PrismaService, BusSimulatorService],
+  exports: [BusesService, BusSimulatorService],
 })
 export class BusesModule {}
