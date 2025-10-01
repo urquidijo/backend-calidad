@@ -40,15 +40,14 @@ export class EstudianteBusController {
   getLocation(@Param('id', ParseIntPipe) busId: number) {
     return this.svc.getBusLocation(busId);
   }
-}
-
-@Controller('students')
-export class StudentBusController {
-  constructor(private readonly svc: EstudianteBusService) {}
-
-  @Get(':id/bus')
-  async getBus(@Param('id', ParseIntPipe) studentId: number) {
+  
+  @Get(':idStudent/bus')
+  async getBus(@Param('idStudent', ParseIntPipe) studentId: number) {
     const bus = await this.svc.findBusByStudent(studentId);
     return { bus }; // 🔹 siempre devuelve un objeto { bus: ... }
   }
 }
+
+
+  
+
