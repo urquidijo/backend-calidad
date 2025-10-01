@@ -1,42 +1,42 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  Param,
-  ParseIntPipe,
-  Patch,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
 import { EstudianteBusService } from './estudianteBus.service';
 
-@Controller('students')
+@Controller('buses')
 export class EstudianteBusController {
   constructor(private readonly svc: EstudianteBusService) {}
 
-  // Obtener información completa del bus de un estudiante
-  @Get(':studentId/bus')
-  async getBusForStudent(@Param('studentId', ParseIntPipe) studentId: number) {
-    const bus = await this.svc.findBusByStudent(studentId);
-    return { bus: bus ?? null };
+  @Post(':id/start')
+  startRoute(@Param('id', ParseIntPipe) busId: number) {
+    return this.svc.startRoute(busId);
   }
 
-  // Actualizar ubicación de un bus (ej: desde app del conductor)
-  @Patch('bus/:id/location')
-  async updateBusLocation(
-    @Param('id', ParseIntPipe) busId: number,
-    @Body()
-    body: { lat: number; lon: number; speedKph?: number; heading?: number },
-  ) {
-    if (typeof body.lat !== 'number' || typeof body.lon !== 'number') {
-      throw new BadRequestException('lat y lon son requeridos');
-    }
+  @Post(':id/end')
+  endRoute(@Param('id', ParseIntPipe) busId: number) {
+    return this.svc.endRoute(busId);
+  }
+
+  @Post(':id/reset')
+  resetRoute(@Param('id', ParseIntPipe) busId: number) {
+    return this.svc.resetRoute(busId);
+  }
+
+  @Patch(':id/location')
+  updateLocation(@Param('id', ParseIntPipe) busId: number, @Body() body: { lat: number; lon: number }) {
     return this.svc.updateBusLocation(busId, body);
   }
 
-  // Obtener solo la ubicación actual del bus
-  @Get('bus/:id/location')
-  async getBusLocation(@Param('id', ParseIntPipe) busId: number) {
-    const bus = await this.svc.getBusLocation(busId);
-    return { location: bus };
+  @Get(':id/location')
+  getLocation(@Param('id', ParseIntPipe) busId: number) {
+    return this.svc.getBusLocation(busId);
+  }
+}
+
+@Controller('students')
+export class StudentBusController {
+  constructor(private readonly svc: EstudianteBusService) {}
+
+  @Get(':id/bus')
+  getBus(@Param('id', ParseIntPipe) studentId: number) {
+    return this.svc.findBusByStudent(studentId);
   }
 }
