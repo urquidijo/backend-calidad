@@ -149,4 +149,26 @@ export class EstudianteBusService {
       etaMinutes,
     };
   }
+
+  async getBusLocation(busId: number) {
+    const bus = await this.prisma.bus.findUnique({
+      where: { id: busId },
+      select: {
+        id: true,
+        lastLat: true,
+        lastLon: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!bus || !bus.lastLat || !bus.lastLon) {
+      return null;
+    }
+
+    return {
+      lat: bus.lastLat,
+      lon: bus.lastLon,
+      timestamp: bus.updatedAt.toISOString(),
+    };
+  }
 }
