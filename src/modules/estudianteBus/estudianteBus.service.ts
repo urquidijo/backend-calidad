@@ -1,5 +1,4 @@
-// src/modules/estudiante/estudianteBus.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 type Coord = { lat: number; lon: number };
@@ -22,7 +21,6 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 export class EstudianteBusService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // 🔹 Inicia la ruta desde la primera parada
   async startRoute(busId: number) {
     const bus = await this.prisma.bus.findUnique({
       where: { id: busId },
@@ -33,8 +31,8 @@ export class EstudianteBusService {
         },
       },
     });
-    if (!bus) throw new NotFoundException('Bus no encontrado');
-    if (!bus.estudiantes.length) throw new NotFoundException('No hay estudiantes asignados');
+    if (!bus) return null;
+    if (!bus.estudiantes.length) return null;
 
     const firstStop = bus.estudiantes[0].estudiante;
 
@@ -48,16 +46,12 @@ export class EstudianteBusService {
     });
   }
 
-  // 🔹 Finaliza ruta → llegó al colegio
   async endRoute(busId: number) {
     const bus = await this.prisma.bus.findUnique({
       where: { id: busId },
       include: { colegio: true },
     });
-    if (!bus) throw new NotFoundException('Bus no encontrado');
-    if (!bus.colegio?.lat || !bus.colegio?.lon) {
-      throw new NotFoundException('Coordenadas de colegio no registradas');
-    }
+    if (!bus || !bus.colegio?.lat || !bus.colegio?.lon) return null;
 
     return this.prisma.bus.update({
       where: { id: busId },
@@ -69,7 +63,6 @@ export class EstudianteBusService {
     });
   }
 
-  // 🔹 Reinicia ruta (espera)
   async resetRoute(busId: number) {
     return this.prisma.bus.update({
       where: { id: busId },
@@ -77,7 +70,6 @@ export class EstudianteBusService {
     });
   }
 
-  // 🔹 Update GPS (ejemplo si viene de móvil del conductor)
   async updateBusLocation(busId: number, dto: { lat: number; lon: number }) {
     return this.prisma.bus.update({
       where: { id: busId },
@@ -90,23 +82,26 @@ export class EstudianteBusService {
     });
   }
 
-  // 🔹 Obtener solo ubicación
   async getBusLocation(busId: number) {
     const bus = await this.prisma.bus.findUnique({
       where: { id: busId },
       select: { lastLat: true, lastLon: true, updatedAt: true, status: true },
     });
     if (!bus || !bus.lastLat || !bus.lastLon) return null;
-    return { lat: bus.lastLat, lon: bus.lastLon, timestamp: bus.updatedAt, status: bus.status };
+    return {
+      lat: bus.lastLat,
+      lon: bus.lastLon,
+      timestamp: bus.updatedAt,
+      status: bus.status,
+    };
   }
 
-  // 🔹 Obtener info bus asignado a estudiante (vista padre)
   async findBusByStudent(studentId: number) {
     const estudiante = await this.prisma.estudiante.findUnique({
       where: { id: studentId },
       select: { id: true, nombre: true, colegioId: true },
     });
-    if (!estudiante) throw new NotFoundException('Estudiante no encontrado');
+    if (!estudiante) return null;
 
     const asign = await this.prisma.estudianteBus.findFirst({
       where: { estudianteId: studentId },
@@ -131,9 +126,9 @@ export class EstudianteBusService {
       lng: eb.estudiante.lon,
     }));
 
-    const last_location = b.lastLat && b.lastLon ? { lat: b.lastLat, lng: b.lastLon } : null;
+    const last_location =
+      b.lastLat && b.lastLon ? { lat: b.lastLat, lng: b.lastLon } : null;
 
-    // ETA
     let etaMinutes: number | null = null;
     const childStop = route_coords.find((r) => r.id === studentId);
     if (childStop && last_location) {
@@ -158,7 +153,11 @@ export class EstudianteBusService {
       route_coords,
       child_stop: childStop ?? null,
       etaMinutes,
-      school_stop: b.colegio?.lat && b.colegio?.lon ? { lat: b.colegio.lat, lon: b.colegio.lon } : null,
+      colegioId: estudiante.colegioId,
+      school_stop:
+        b.colegio?.lat && b.colegio?.lon
+          ? { lat: b.colegio.lat, lon: b.colegio.lon }
+          : null,
     };
   }
 }

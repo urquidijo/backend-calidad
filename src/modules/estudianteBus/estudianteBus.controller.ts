@@ -49,6 +49,6 @@ export class StudentBusController {
   @Get(':id/bus')
   async getBus(@Param('id', ParseIntPipe) studentId: number) {
     const bus = await this.svc.findBusByStudent(studentId);
-    return { bus }; // 🔹 siempre devuelve un objeto con la key "bus"
+    return { bus }; // 🔹 siempre devuelve un objeto { bus: ... }
   }
 }
