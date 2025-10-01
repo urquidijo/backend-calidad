@@ -1,3 +1,4 @@
+// prisma/schema.prisma
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -12,6 +13,19 @@ enum Rol {
   ADMIN_COLEGIO
   CONDUCTOR
   PADRE
+}
+
+enum BusStatus {
+  EN_RUTA
+  EN_COLEGIO
+  FUERA_DE_SERVICIO
+}
+
+enum RideStatus {
+  NINGUNO       // default
+  ESPERANDO     // en casa / en parada esperando
+  EN_BUS        // subió al bus
+  BAJO_EN_COLEGIO // llegó y bajó en el colegio
 }
 
 model Colegio {
@@ -72,7 +86,7 @@ model Estudiante {
   curso      String?
   activo     Boolean   @default(true)
   createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   padres         PadreEstudiante[]
   buses          EstudianteBus[]
@@ -94,27 +108,40 @@ model PadreEstudiante {
 }
 
 model Bus {
-  id          Int       @id @default(autoincrement())
-  colegioId   Int
-  codigo      String    // identificador único del bus dentro del colegio
-  nombre      String?   // nombre de la ruta o descripción
-  placa       String?   // placa del bus
-  conductorId Int?      // usuario con rol CONDUCTOR
-  activo      Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @default(now())
+  id           Int        @id @default(autoincrement())
+  colegioId    Int
+  codigo       String     // identificador único del bus dentro del colegio
+  nombre       String?    // nombre de la ruta o descripción
+  placa        String?    // placa del bus
+  conductorId  Int?       // usuario con rol CONDUCTOR
+  activo       Boolean    @default(true)
 
-  colegio     Colegio   @relation(fields: [colegioId], references: [id], onDelete: Cascade)
-  conductor   Usuario?  @relation(fields: [conductorId], references: [id], onDelete: SetNull)
-  estudiantes EstudianteBus[]
+  // estado y última ubicación (lectura rápida)
+  status       BusStatus  @default(EN_RUTA)
+  lastLat      Float?
+  lastLon      Float?
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  colegio      Colegio    @relation(fields: [colegioId], references: [id], onDelete: Cascade)
+  conductor    Usuario?   @relation(fields: [conductorId], references: [id], onDelete: SetNull)
+  estudiantes  EstudianteBus[]
+  busLocations BusLocation[]
 
   @@unique([colegioId, codigo])
   @@index([colegioId, activo])
+  @@index([status])
 }
 
 model EstudianteBus {
   estudianteId Int
   busId        Int
+
+  // estado del alumno respecto a este bus (día/recorrido)
+  status       RideStatus @default(NINGUNO)
+  boardedAt    DateTime?
+  droppedAt    DateTime?
 
   estudiante   Estudiante @relation(fields: [estudianteId], references: [id], onDelete: Cascade)
   bus          Bus        @relation(fields: [busId], references: [id], onDelete: Cascade)
@@ -122,4 +149,19 @@ model EstudianteBus {
   createdAt    DateTime   @default(now())
 
   @@id([estudianteId, busId])
+  @@index([busId, status])
+}
+
+model BusLocation {
+  id        Int      @id @default(autoincrement())
+  busId     Int
+  lat       Float
+  lon       Float
+  speedKph  Float?   // opcional: velocidad estimada
+  heading   Float?   // opcional: rumbo (0-359)
+  timestamp DateTime @default(now())
+
+  bus       Bus @relation(fields: [busId], references: [id], onDelete: Cascade)
+
+  @@index([busId, timestamp])
 }

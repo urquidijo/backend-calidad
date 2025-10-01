@@ -1,9 +1,14 @@
 // src/modules/estudiante/estudianteBus.service.ts
-import { Injectable, NotFoundException } from "@nestjs/common";
-import { PrismaService } from "src/prisma/prisma.service";
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 // Helper simple para calcular distancia (Haversine formula)
-function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+function haversineDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+) {
   const toRad = (x: number) => (x * Math.PI) / 180;
   const R = 6371e3; // radio tierra en metros
   const φ1 = toRad(lat1);
@@ -13,8 +18,7 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 
   const a =
     Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) *
-    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
@@ -27,22 +31,47 @@ type Coord = { id: number; nombre: string; lat: number; lng: number };
 export class EstudianteBusService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async updateBusLocation(
+    busId: number,
+    dto: { lat: number; lon: number; speedKph?: number; heading?: number },
+  ) {
+    const bus = await this.prisma.bus.update({
+      where: { id: busId },
+      data: {
+        lastLat: dto.lat,
+        lastLon: dto.lon,
+        updatedAt: new Date(),
+        status: 'EN_RUTA',
+        busLocations: {
+          create: {
+            lat: dto.lat,
+            lon: dto.lon,
+            speedKph: dto.speedKph,
+            heading: dto.heading,
+          },
+        },
+      },
+    });
+
+    return bus;
+  }
+
   async findBusByStudent(studentId: number) {
-    // 1. Verificar estudiante existe
     const estudiante = await this.prisma.estudiante.findUnique({
       where: { id: studentId },
       select: { id: true, nombre: true, colegioId: true },
     });
-    if (!estudiante) throw new NotFoundException("Estudiante no encontrado");
+    if (!estudiante) throw new NotFoundException('Estudiante no encontrado');
 
-    // 2. Buscar bus asignado
     const asign = await this.prisma.estudianteBus.findFirst({
       where: { estudianteId: studentId },
       include: {
         bus: {
           include: {
             conductor: { select: { id: true, nombre: true, telefono: true } },
-            colegio: { select: { id: true, nombre: true } },
+            colegio: {
+              select: { id: true, nombre: true, lat: true, lon: true },
+            },
             estudiantes: {
               include: {
                 estudiante: {
@@ -53,14 +82,13 @@ export class EstudianteBusService {
           },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (!asign) return null;
 
     const b = asign.bus;
 
-    // 3. Construir ruta (solo estudiantes con coordenadas válidas)
     const route_coords: Coord[] = b.estudiantes
       .map((eb) => ({
         id: eb.estudiante.id,
@@ -70,21 +98,18 @@ export class EstudianteBusService {
       }))
       .filter(
         (p): p is Coord =>
-          typeof p.lat === "number" &&
-          typeof p.lng === "number"
+          typeof p.lat === 'number' && typeof p.lng === 'number',
       );
 
-    // 4. Simular ubicación actual del bus (ej: primera parada)
     const last_location =
-      route_coords.length > 0
+      b.lastLat && b.lastLon
         ? {
-            lat: route_coords[0].lat,
-            lng: route_coords[0].lng,
-            timestamp: new Date().toISOString(),
+            lat: b.lastLat,
+            lng: b.lastLon,
+            timestamp: b.updatedAt.toISOString(),
           }
         : null;
 
-    // 5. Calcular ETA hasta el hijo
     let etaMinutes: number | null = null;
     const childStop = route_coords.find((r) => r.id === studentId);
     if (childStop && last_location) {
@@ -92,14 +117,13 @@ export class EstudianteBusService {
         last_location.lat,
         last_location.lng,
         childStop.lat,
-        childStop.lng
+        childStop.lng,
       );
-      const avgSpeed = 15000 / 3600; // ~15 km/h en m/s (ciudad con tráfico)
+      const avgSpeed = 15000 / 3600;
       const seconds = distanceMeters / avgSpeed;
-      etaMinutes = Math.max(1, Math.round(seconds / 60)); // mínimo 1 minuto
+      etaMinutes = Math.max(1, Math.round(seconds / 60));
     }
 
-    // 6. Respuesta normalizada
     return {
       id: b.id,
       codigo: b.codigo,
@@ -109,10 +133,19 @@ export class EstudianteBusService {
       driver_name: b.conductor?.nombre ?? null,
       driver_phone: b.conductor?.telefono ?? null,
       colegioId: b.colegioId ?? b.colegio?.id ?? null,
-      status: "EN_RUTA", // puedes adaptarlo
+      status: b.status ?? 'EN_RUTA',
       last_location,
       route_coords,
       child_stop: childStop ?? null,
+      school_stop:
+        b.colegio?.lat && b.colegio?.lon
+          ? {
+              id: b.colegio.id,
+              nombre: b.colegio.nombre,
+              lat: b.colegio.lat,
+              lng: b.colegio.lon,
+            }
+          : null,
       etaMinutes,
     };
   }
