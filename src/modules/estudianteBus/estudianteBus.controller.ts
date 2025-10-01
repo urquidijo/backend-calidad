@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { EstudianteBusService } from './estudianteBus.service';
 
 @Controller('buses')
@@ -21,7 +29,10 @@ export class EstudianteBusController {
   }
 
   @Patch(':id/location')
-  updateLocation(@Param('id', ParseIntPipe) busId: number, @Body() body: { lat: number; lon: number }) {
+  updateLocation(
+    @Param('id', ParseIntPipe) busId: number,
+    @Body() body: { lat: number; lon: number },
+  ) {
     return this.svc.updateBusLocation(busId, body);
   }
 
@@ -36,7 +47,8 @@ export class StudentBusController {
   constructor(private readonly svc: EstudianteBusService) {}
 
   @Get(':id/bus')
-  getBus(@Param('id', ParseIntPipe) studentId: number) {
-    return this.svc.findBusByStudent(studentId);
+  async getBus(@Param('id', ParseIntPipe) studentId: number) {
+    const bus = await this.svc.findBusByStudent(studentId);
+    return { bus }; // 🔹 siempre devuelve un objeto con la key "bus"
   }
 }
