@@ -7,6 +7,7 @@ import {
   Body,
   UsePipes,
   ValidationPipe,
+  Query,
 } from '@nestjs/common';
 import { BusesService } from './buses.service';
 import { UpdateBusLocationDto } from './dto/update-location.dto';
@@ -15,6 +16,14 @@ import { UpdateBusStatusDto } from './dto/update-status.dto';
 @Controller('buses') // con globalPrefix 'api' en main.ts => /api/buses/...
 export class BusesController {
   constructor(private readonly service: BusesService) {}
+
+   @Post(':id/ruta/generar')
+  async generarRuta(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('direction') direction: 'IDA' | 'VUELTA' = 'IDA',
+  ) {
+    return this.service.generarRutaDesdeCasas(id, direction);
+  }
 
   @Get(':id/ruta')
   async getRuta(@Param('id', ParseIntPipe) id: number) {
