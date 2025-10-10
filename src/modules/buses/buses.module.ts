@@ -6,5 +6,6 @@ import { PrismaService } from "../../prisma/prisma.service";
 @Module({
   controllers: [BusesController],
   providers: [BusesService, PrismaService],
+  exports: [BusesService],
 })
 export class BusesModule {}

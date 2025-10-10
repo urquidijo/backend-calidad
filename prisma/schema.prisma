@@ -1,3 +1,6 @@
+// ---------------------------------------
+// Datasource & Generator
+// ---------------------------------------
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -7,6 +10,9 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ---------------------------------------
+// Enums
+// ---------------------------------------
 enum Rol {
   SUPERADMIN
   ADMIN_COLEGIO
@@ -14,6 +20,15 @@ enum Rol {
   PADRE
 }
 
+enum BusStatus {
+  NO_INICIADA
+  EN_RUTA
+  EN_COLEGIO
+}
+
+// ---------------------------------------
+// Models
+// ---------------------------------------
 model Colegio {
   id           Int          @id @default(autoincrement())
   nombre       String       @unique
@@ -51,8 +66,8 @@ model Usuario {
   colegioId     Int?
   colegio       Colegio?   @relation("ColegioUsuarios", fields: [colegioId], references: [id], onDelete: SetNull)
 
-  // si es conductor puede tener buses asignados
-  busesConductor Bus[]
+  // Si es CONDUCTOR: buses a su cargo
+  busesConductor Bus[]     @relation("UsuarioConductor")
 
   @@index([rol, activo])
 }
@@ -67,14 +82,20 @@ model Estudiante {
   nombre     String
   curso      String?
   activo     Boolean   @default(true)
+
+  // Coordenadas del domicilio (para mostrar en el mapa)
+  homeLat    Float?
+  homeLon    Float?
+
   createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   padres         PadreEstudiante[]
   buses          EstudianteBus[]
 
   @@unique([colegioId, codigo])   // único por colegio
   @@index([colegioId, activo])
+  @@index([homeLat, homeLon])
 }
 
 model PadreEstudiante {
@@ -98,14 +119,28 @@ model Bus {
   conductorId Int?      // usuario con rol CONDUCTOR
   activo      Boolean   @default(true)
   createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   colegio     Colegio   @relation(fields: [colegioId], references: [id], onDelete: Cascade)
-  conductor   Usuario?  @relation(fields: [conductorId], references: [id], onDelete: SetNull)
+
+  // Relación nombrada explícitamente para no chocar con otras relaciones Usuario<->Colegio
+  conductor   Usuario?  @relation("UsuarioConductor", fields: [conductorId], references: [id], onDelete: SetNull)
+
+  // Ruta (paradas)
+  paradas     Parada[]
+
+  // Estudiantes asignados a este bus (N:M)
   estudiantes EstudianteBus[]
+
+  // Telemetría actual (1:1)
+  telemetria  TelemetriaBus?
+
+  // Historial de telemetría (1:N)
+  telemetriaLogs TelemetriaBusLog[]
 
   @@unique([colegioId, codigo])
   @@index([colegioId, activo])
+  @@index([conductorId])
 }
 
 model EstudianteBus {
@@ -118,4 +153,53 @@ model EstudianteBus {
   createdAt    DateTime   @default(now())
 
   @@id([estudianteId, busId])
+  @@index([busId])
+}
+
+// Paradas ordenadas que definen la ruta del Bus
+model Parada {
+  id        Int      @id @default(autoincrement())
+  busId     Int
+  nombre    String?
+  orden     Int
+  lat       Float
+  lon       Float
+  activa    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bus       Bus      @relation(fields: [busId], references: [id], onDelete: Cascade)
+
+  @@index([busId, orden])
+  @@index([lat, lon])
+}
+
+// Última ubicación reportada por el bus (para polling y banner de estado)
+model TelemetriaBus {
+  busId     Int       @unique
+  lat       Float
+  lon       Float
+  heading   Float?
+  status    BusStatus @default(NO_INICIADA)
+  updatedAt DateTime  @updatedAt
+
+  bus       Bus       @relation(fields: [busId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([updatedAt])
+}
+
+// Histórico de ubicaciones del bus (si quieres analizar recorridos)
+model TelemetriaBusLog {
+  id        Int      @id @default(autoincrement())
+  busId     Int
+  lat       Float
+  lon       Float
+  heading   Float?
+  createdAt DateTime @default(now())
+
+  bus       Bus      @relation(fields: [busId], references: [id], onDelete: Cascade)
+
+  @@index([busId, createdAt])
+  @@index([lat, lon])
 }

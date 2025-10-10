@@ -1,25 +1,51 @@
-import { Controller, Post, Get, Param, Body, Query, ParseIntPipe } from "@nestjs/common";
-import { BusesService } from "./buses.service";
-import { CreateBusDto } from "./dto/create-bus.dto";
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Post,
+  Body,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common';
+import { BusesService } from './buses.service';
+import { UpdateBusLocationDto } from './dto/update-location.dto';
+import { UpdateBusStatusDto } from './dto/update-status.dto';
 
-@Controller("schools/:schoolId/buses")
+@Controller('buses') // con globalPrefix 'api' en main.ts => /api/buses/...
 export class BusesController {
-  constructor(private readonly busesService: BusesService) {}
+  constructor(private readonly service: BusesService) {}
 
-  @Post()
-  create(
-    @Param("schoolId", ParseIntPipe) schoolId: number,
-    @Body() dto: CreateBusDto,
-  ) {
-    return this.busesService.create(schoolId, dto);
+  @Get(':id/ruta')
+  async getRuta(@Param('id', ParseIntPipe) id: number) {
+    return this.service.getRuta(id);
   }
 
-  @Get()
-  findAll(
-    @Param("schoolId", ParseIntPipe) schoolId: number,
-    @Query("activo") activo?: string,
+  @Get(':id/estudiantes')
+  async getEstudiantes(@Param('id', ParseIntPipe) id: number) {
+    return this.service.getEstudiantes(id);
+  }
+
+  @Get(':id/location')
+  async getLocation(@Param('id', ParseIntPipe) id: number) {
+    return this.service.getLocation(id);
+  }
+
+  @Post(':id/location')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async postLocation(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateBusLocationDto,
   ) {
-    const activeBool = activo === undefined ? undefined : activo === "true";
-    return this.busesService.findAll(schoolId, activeBool);
+    return this.service.postLocation(id, dto);
+  }
+
+  @Post(':id/status')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async postStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateBusStatusDto,
+  ) {
+    return this.service.postStatus(id, dto);
   }
 }

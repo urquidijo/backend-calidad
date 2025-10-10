@@ -1,48 +1,90 @@
-import { Injectable, NotFoundException, ConflictException } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
-import { CreateBusDto } from "./dto/create-bus.dto";
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service'; // ajusta la ruta si tu PrismaService está en otro lugar
+import { UpdateBusLocationDto } from './dto/update-location.dto';
+import { UpdateBusStatusDto } from './dto/update-status.dto';
 
 @Injectable()
 export class BusesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async create(schoolId: number, dto: CreateBusDto) {
-    const colegio = await this.prisma.colegio.findUnique({ where: { id: schoolId } });
-    if (!colegio) throw new NotFoundException("Colegio no encontrado");
-
-    const exists = await this.prisma.bus.findFirst({
-      where: { colegioId: schoolId, codigo: dto.codigo },
-    });
-    if (exists) throw new ConflictException("Ya existe un bus con ese código en el colegio");
-
-    if (dto.conductorId) {
-      const conductor = await this.prisma.usuario.findUnique({ where: { id: dto.conductorId } });
-      if (!conductor) throw new NotFoundException("Conductor no encontrado");
-    }
-
-    return this.prisma.bus.create({
-      data: {
-        colegioId: schoolId,
-        codigo: dto.codigo,
-        nombre: dto.nombre,
-        placa: dto.placa,
-        conductorId: dto.conductorId,
-        activo: dto.activo ?? true,
-      },
+  async getRuta(busId: number) {
+    await this.ensureBus(busId);
+    return this.prisma.parada.findMany({
+      where: { busId, activa: true },
+      orderBy: { orden: 'asc' },
     });
   }
 
-  async findAll(schoolId: number, activo?: boolean) {
-    const colegio = await this.prisma.colegio.findUnique({ where: { id: schoolId } });
-    if (!colegio) throw new NotFoundException("Colegio no encontrado");
-
-    return this.prisma.bus.findMany({
-      where: {
-        colegioId: schoolId,
-        ...(typeof activo === "boolean" ? { activo } : {}),
+  async getEstudiantes(busId: number) {
+    await this.ensureBus(busId);
+    const est = await this.prisma.estudianteBus.findMany({
+      where: { busId },
+      include: {
+        estudiante: {
+          select: { id: true, nombre: true, homeLat: true, homeLon: true },
+        },
       },
-      orderBy: { codigo: "asc" },
-      include: { conductor: { select: { id: true, nombre: true, telefono: true } } },
     });
+    return est.map((e) => e.estudiante);
+  }
+
+  async getLocation(busId: number) {
+    await this.ensureBus(busId);
+    const t = await this.prisma.telemetriaBus.findUnique({ where: { busId } });
+    if (!t) return { location: null };
+    return {
+      location: {
+        lat: t.lat,
+        lon: t.lon,
+        heading: t.heading,
+        status: t.status,
+        updatedAt: t.updatedAt,
+      },
+    };
+  }
+
+  async postLocation(busId: number, dto: UpdateBusLocationDto) {
+    await this.ensureBus(busId);
+
+    const up = await this.prisma.telemetriaBus.upsert({
+      where: { busId },
+      update: {
+        lat: dto.lat,
+        lon: dto.lon,
+        heading: dto.heading,
+        status: dto.status,
+      },
+      create: {
+        busId,
+        lat: dto.lat,
+        lon: dto.lon,
+        heading: dto.heading,
+        status: dto.status ?? 'NO_INICIADA',
+      },
+    });
+
+    // histórico (opcional)
+    await this.prisma.telemetriaBusLog.create({
+      data: { busId, lat: dto.lat, lon: dto.lon, heading: dto.heading },
+    });
+
+    // si usas sockets, emite aquí: io.to(`bus:${busId}`).emit('bus:location', {...})
+
+    return { ok: true, location: up };
+  }
+
+  async postStatus(busId: number, dto: UpdateBusStatusDto) {
+    await this.ensureBus(busId);
+    const up = await this.prisma.telemetriaBus.upsert({
+      where: { busId },
+      update: { status: dto.status },
+      create: { busId, lat: 0, lon: 0, status: dto.status },
+    });
+    return { ok: true, status: up.status };
+  }
+
+  private async ensureBus(busId: number) {
+    const exists = await this.prisma.bus.findUnique({ where: { id: busId } });
+    if (!exists) throw new NotFoundException('Bus no encontrado');
   }
 }
