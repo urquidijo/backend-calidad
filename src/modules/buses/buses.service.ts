@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateBusLocationDto } from './dto/update-location.dto';
 import { UpdateBusStatusDto } from './dto/update-status.dto';
+import { BusStatus } from '@prisma/client';
 
 type LatLng = { lat: number; lon: number };
 
@@ -9,15 +10,7 @@ type LatLng = { lat: number; lon: number };
 export class BusesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /* =================== Lecturas básicas =================== */
-
-  async getRuta(busId: number) {
-    await this.ensureBus(busId);
-    return this.prisma.parada.findMany({
-      where: { busId, activa: true },
-      orderBy: { orden: 'asc' },
-    });
-  }
+  /* =================== Lecturas =================== */
 
   async getEstudiantes(busId: number) {
     await this.ensureBus(busId);
@@ -29,7 +22,79 @@ export class BusesService {
         },
       },
     });
-    return est.map((e) => e.estudiante);
+    // Solo devolver estudiantes con lat/lon válidos
+    return est
+      .map((e) => e.estudiante)
+      .filter((s) => typeof s.homeLat === 'number' && typeof s.homeLon === 'number');
+  }
+
+  /**
+   * Devuelve una "ruta" ordenada que pasa por los hogares de los estudiantes.
+   * - direction: 'IDA' => casas -> colegio (colegio al final)
+   *              'VUELTA' => colegio -> casas (colegio al inicio)
+   * - includeSchool: si incluir nodo "Colegio" al inicio/fin (default true)
+   */
+  async getRutaFromHomes(
+    busId: number,
+    direction: 'IDA' | 'VUELTA' = 'IDA',
+    includeSchool = true,
+  ) {
+    // 1) Bus + colegio
+    const bus = await this.prisma.bus.findUnique({
+      where: { id: busId },
+      include: { colegio: true },
+    });
+    if (!bus) throw new NotFoundException('Bus no encontrado');
+
+    const schoolLat = bus.colegio?.lat;
+    const schoolLon = bus.colegio?.lon;
+    if (typeof schoolLat !== 'number' || typeof schoolLon !== 'number') {
+      throw new BadRequestException('El colegio no tiene coordenadas registradas');
+    }
+    const school: LatLng = { lat: schoolLat, lon: schoolLon };
+
+    // 2) Casas de estudiantes asignados
+    const estudiantes = await this.getEstudiantes(busId); // ya valida lat/lon
+    if (estudiantes.length === 0) {
+      throw new BadRequestException('No hay estudiantes con domicilio (homeLat/homeLon)');
+    }
+
+    const casas = estudiantes.map((s) => ({
+      id: s.id,
+      nombre: s.nombre,
+      lat: s.homeLat as number,
+      lon: s.homeLon as number,
+    }));
+
+    // 3) Ordenar con nearest-neighbor
+    const ordered =
+      direction === 'VUELTA'
+        ? nearestNeighborOrder(casas, school) // arranca cerca del colegio
+        : nearestNeighborOrder(casas, null);  // arranca en la 1ra casa y encadena
+
+    // 4) Componer salida
+    type Waypoint = { tipo: 'CASA' | 'COLEGIO'; id?: number; nombre: string; lat: number; lon: number };
+    let waypoints: Waypoint[];
+
+    if (direction === 'IDA') {
+      waypoints = ordered.map((c) => ({ tipo: 'CASA', id: c.id, nombre: c.nombre, lat: c.lat, lon: c.lon }));
+      if (includeSchool) waypoints.push({ tipo: 'COLEGIO', nombre: 'Colegio', lat: school.lat, lon: school.lon });
+    } else {
+      waypoints = includeSchool
+        ? [{ tipo: 'COLEGIO', nombre: 'Colegio', lat: school.lat, lon: school.lon }]
+        : [];
+      waypoints = waypoints.concat(
+        ordered.map((c) => ({ tipo: 'CASA', id: c.id, nombre: c.nombre, lat: c.lat, lon: c.lon })),
+      );
+    }
+
+    return {
+      ok: true,
+      direction,
+      includeSchool,
+      totalPuntos: waypoints.length,
+      waypoints,
+    };
   }
 
   async getLocation(busId: number) {
@@ -47,7 +112,7 @@ export class BusesService {
     };
   }
 
-  /* =================== Escrituras básicas =================== */
+  /* =================== Escrituras =================== */
 
   async postLocation(busId: number, dto: UpdateBusLocationDto) {
     await this.ensureBus(busId);
@@ -58,7 +123,7 @@ export class BusesService {
         lat: dto.lat,
         lon: dto.lon,
         heading: dto.heading,
-        status: dto.status,
+        status: dto.status ?? undefined,
       },
       create: {
         busId,
@@ -69,122 +134,47 @@ export class BusesService {
       },
     });
 
-    // histórico (opcional)
     await this.prisma.telemetriaBusLog.create({
       data: { busId, lat: dto.lat, lon: dto.lon, heading: dto.heading },
     });
 
-    // si usas sockets, emite aquí: io.to(`bus:${busId}`).emit('bus:location', {...})
+    // Si usas sockets: io.to(`bus:${busId}`).emit('bus:location', {...})
 
     return { ok: true, location: up };
   }
 
   async postStatus(busId: number, dto: UpdateBusStatusDto) {
     await this.ensureBus(busId);
+
+    // Buscar ubicación existente; si no hay, trata de setear algo razonable
+    const current = await this.prisma.telemetriaBus.findUnique({ where: { busId } });
+
+    let lat = current?.lat ?? 0;
+    let lon = current?.lon ?? 0;
+
+    if (!current) {
+      // preferimos colegio
+      const bus = await this.prisma.bus.findUnique({ where: { id: busId }, include: { colegio: true } });
+      if (bus?.colegio?.lat != null && bus?.colegio?.lon != null) {
+        lat = bus.colegio.lat;
+        lon = bus.colegio.lon;
+      } else {
+        // o primera casa disponible
+        const estudiantes = await this.getEstudiantes(busId);
+        if (estudiantes.length) {
+          lat = estudiantes[0].homeLat as number;
+          lon = estudiantes[0].homeLon as number;
+        }
+      }
+    }
+
     const up = await this.prisma.telemetriaBus.upsert({
       where: { busId },
       update: { status: dto.status },
-      create: { busId, lat: 0, lon: 0, status: dto.status },
+      create: { busId, lat, lon, status: dto.status },
     });
+
     return { ok: true, status: up.status };
-  }
-
-  /* ============ Generar ruta desde casas de alumnos ============ */
-  /**
-   * Construye paradas a partir de las casas (homeLat/homeLon) de estudiantes asignados.
-   * direction:
-   *  - 'IDA'    => casas -> colegio (última parada es el colegio)
-   *  - 'VUELTA' => colegio -> casas (primera parada es el colegio)
-   */
-  async generarRutaDesdeCasas(busId: number, direction: 'IDA' | 'VUELTA' = 'IDA') {
-    // 1) Bus + colegio
-    const bus = await this.prisma.bus.findUnique({
-      where: { id: busId },
-      include: { colegio: true },
-    });
-    if (!bus) throw new NotFoundException('Bus no encontrado');
-
-    const schoolLat = bus.colegio?.lat;
-    const schoolLon = bus.colegio?.lon;
-    if (typeof schoolLat !== 'number' || typeof schoolLon !== 'number') {
-      throw new BadRequestException('El colegio no tiene coordenadas registradas');
-    }
-    const school: LatLng = { lat: schoolLat, lon: schoolLon };
-
-    // 2) Casas de estudiantes asignados
-    const asignaciones = await this.prisma.estudianteBus.findMany({
-      where: { busId },
-      include: {
-        estudiante: {
-          select: { id: true, nombre: true, homeLat: true, homeLon: true },
-        },
-      },
-    });
-
-    const casas = asignaciones
-      .map((a) => ({
-        id: a.estudiante.id,
-        nombre: a.estudiante.nombre,
-        lat: a.estudiante.homeLat,
-        lon: a.estudiante.homeLon,
-      }))
-      .filter(
-        (c) => typeof c.lat === 'number' && typeof c.lon === 'number',
-      ) as Array<{ id: number; nombre: string; lat: number; lon: number }>;
-
-    if (casas.length === 0) {
-      throw new BadRequestException(
-        'No hay estudiantes con domicilio (homeLat/homeLon) para generar ruta',
-      );
-    }
-
-    // 3) Ordenar con heuristic nearest-neighbor
-    // - Para IDA: no hay "start" (arranca en la primera casa elegida y encadena por cercanía),
-    //             luego se agrega el colegio al final.
-    // - Para VUELTA: "start" es el colegio (elige la casa más cercana al colegio primero),
-    //                luego encadena por cercanía.
-    const ordered =
-      direction === 'VUELTA'
-        ? nearestNeighborOrder(casas, school)
-        : nearestNeighborOrder(casas, null);
-
-    // 4) Componer lista final con colegio al comienzo o al final
-    const paradas: Array<{ nombre: string; lat: number; lon: number }> =
-      direction === 'IDA'
-        ? [
-            ...ordered.map((c) => ({ nombre: c.nombre, lat: c.lat, lon: c.lon })),
-            { nombre: 'Colegio', ...school },
-          ]
-        : [{ nombre: 'Colegio', ...school }].concat(
-            ordered.map((c) => ({ nombre: c.nombre, lat: c.lat, lon: c.lon })),
-          );
-
-    // 5) Persistir: desactivar paradas previas y crear nuevas con orden
-    await this.prisma.parada.updateMany({ where: { busId }, data: { activa: false } });
-
-    for (let i = 0; i < paradas.length; i++) {
-      const p = paradas[i];
-      await this.prisma.parada.create({
-        data: {
-          busId,
-          nombre: p.nombre,
-          orden: i + 1,
-          lat: p.lat,
-          lon: p.lon,
-          activa: true,
-        },
-      });
-    }
-
-    // 6) (Opcional) Colocar la telemetría en la primera parada de la nueva ruta
-    const first = paradas[0];
-    await this.prisma.telemetriaBus.upsert({
-      where: { busId },
-      update: { lat: first.lat, lon: first.lon },
-      create: { busId, lat: first.lat, lon: first.lon, status: 'NO_INICIADA' },
-    });
-
-    return { ok: true, totalParadas: paradas.length, direction };
   }
 
   /* =================== Helpers internos =================== */
@@ -195,9 +185,9 @@ export class BusesService {
   }
 }
 
-/* =================== Funciones utilitarias =================== */
+/* =================== Utilidades =================== */
 
-// Distancia haversine (metros)
+// Distancia haversine (m)
 function haversine(a: LatLng, b: LatLng) {
   const toRad = (x: number) => (x * Math.PI) / 180;
   const R = 6371000;
@@ -213,8 +203,8 @@ function haversine(a: LatLng, b: LatLng) {
 
 /**
  * Heurística Nearest-Neighbor:
- * - Si `start` existe, el primer punto es la casa más cercana a `start`;
- * - si no, inicia con el primer elemento y encadena por cercanía.
+ * - Si `start` existe, el primer punto es el más cercano a `start`
+ * - Luego encadena siempre con el más cercano al último elegido
  */
 function nearestNeighborOrder(
   items: Array<{ id: number; nombre: string; lat: number; lon: number }>,
@@ -225,14 +215,10 @@ function nearestNeighborOrder(
 
   let current: LatLng;
   if (start) {
-    let idx = 0,
-      best = Infinity;
+    let idx = 0, best = Infinity;
     for (let i = 0; i < remaining.length; i++) {
       const d = haversine(start, remaining[i]);
-      if (d < best) {
-        best = d;
-        idx = i;
-      }
+      if (d < best) { best = d; idx = i; }
     }
     const first = remaining.splice(idx, 1)[0];
     result.push(first);
@@ -244,14 +230,10 @@ function nearestNeighborOrder(
   }
 
   while (remaining.length) {
-    let idx = 0,
-      best = Infinity;
+    let idx = 0, best = Infinity;
     for (let i = 0; i < remaining.length; i++) {
       const d = haversine(current, remaining[i]);
-      if (d < best) {
-        best = d;
-        idx = i;
-      }
+      if (d < best) { best = d; idx = i; }
     }
     const next = remaining.splice(idx, 1)[0];
     result.push(next);
