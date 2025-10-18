@@ -1,8 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateBusLocationDto } from './dto/update-location.dto';
-import { UpdateBusStatusDto } from './dto/update-status.dto';
-import { BusStatus } from '@prisma/client';
 
 type LatLng = { lat: number; lon: number };
 
@@ -28,12 +26,6 @@ export class BusesService {
       .filter((s) => typeof s.homeLat === 'number' && typeof s.homeLon === 'number');
   }
 
-  /**
-   * Devuelve una "ruta" ordenada que pasa por los hogares de los estudiantes.
-   * - direction: 'IDA' => casas -> colegio (colegio al final)
-   *              'VUELTA' => colegio -> casas (colegio al inicio)
-   * - includeSchool: si incluir nodo "Colegio" al inicio/fin (default true)
-   */
   async getRutaFromHomes(
     busId: number,
     direction: 'IDA' | 'VUELTA' = 'IDA',
@@ -106,7 +98,6 @@ export class BusesService {
         lat: t.lat,
         lon: t.lon,
         heading: t.heading,
-        status: t.status,
         updatedAt: t.updatedAt,
       },
     };
@@ -123,59 +114,21 @@ export class BusesService {
         lat: dto.lat,
         lon: dto.lon,
         heading: dto.heading,
-        status: dto.status ?? undefined,
       },
       create: {
         busId,
         lat: dto.lat,
         lon: dto.lon,
         heading: dto.heading,
-        status: dto.status ?? 'NO_INICIADA',
       },
     });
 
-    await this.prisma.telemetriaBusLog.create({
-      data: { busId, lat: dto.lat, lon: dto.lon, heading: dto.heading },
-    });
 
     // Si usas sockets: io.to(`bus:${busId}`).emit('bus:location', {...})
 
     return { ok: true, location: up };
   }
 
-  async postStatus(busId: number, dto: UpdateBusStatusDto) {
-    await this.ensureBus(busId);
-
-    // Buscar ubicación existente; si no hay, trata de setear algo razonable
-    const current = await this.prisma.telemetriaBus.findUnique({ where: { busId } });
-
-    let lat = current?.lat ?? 0;
-    let lon = current?.lon ?? 0;
-
-    if (!current) {
-      // preferimos colegio
-      const bus = await this.prisma.bus.findUnique({ where: { id: busId }, include: { colegio: true } });
-      if (bus?.colegio?.lat != null && bus?.colegio?.lon != null) {
-        lat = bus.colegio.lat;
-        lon = bus.colegio.lon;
-      } else {
-        // o primera casa disponible
-        const estudiantes = await this.getEstudiantes(busId);
-        if (estudiantes.length) {
-          lat = estudiantes[0].homeLat as number;
-          lon = estudiantes[0].homeLon as number;
-        }
-      }
-    }
-
-    const up = await this.prisma.telemetriaBus.upsert({
-      where: { busId },
-      update: { status: dto.status },
-      create: { busId, lat, lon, status: dto.status },
-    });
-
-    return { ok: true, status: up.status };
-  }
 
   /* =================== Helpers internos =================== */
 

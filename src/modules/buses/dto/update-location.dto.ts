@@ -1,9 +1,7 @@
-import { IsNumber, IsOptional, IsEnum } from 'class-validator';
-import { BusStatus } from '@prisma/client';
+import { IsNumber, IsOptional } from "class-validator";
 
 export class UpdateBusLocationDto {
   @IsNumber() lat: number;
   @IsNumber() lon: number;
   @IsOptional() @IsNumber() heading?: number;
-  @IsOptional() @IsEnum(BusStatus) status?: BusStatus;
 }

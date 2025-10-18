@@ -20,11 +20,6 @@ enum Rol {
   PADRE
 }
 
-enum BusStatus {
-  NO_INICIADA
-  EN_RUTA
-  EN_COLEGIO
-}
 
 // ---------------------------------------
 // Models
@@ -135,8 +130,6 @@ model Bus {
   // Telemetría actual (1:1)
   telemetria  TelemetriaBus?
 
-  // Historial de telemetría (1:N)
-  telemetriaLogs TelemetriaBusLog[]
 
   @@unique([colegioId, codigo])
   @@index([colegioId, activo])
@@ -180,26 +173,10 @@ model TelemetriaBus {
   lat       Float
   lon       Float
   heading   Float?
-  status    BusStatus @default(NO_INICIADA)
   updatedAt DateTime  @updatedAt
 
   bus       Bus       @relation(fields: [busId], references: [id], onDelete: Cascade)
 
-  @@index([status])
   @@index([updatedAt])
 }
 
-// Histórico de ubicaciones del bus (si quieres analizar recorridos)
-model TelemetriaBusLog {
-  id        Int      @id @default(autoincrement())
-  busId     Int
-  lat       Float
-  lon       Float
-  heading   Float?
-  createdAt DateTime @default(now())
-
-  bus       Bus      @relation(fields: [busId], references: [id], onDelete: Cascade)
-
-  @@index([busId, createdAt])
-  @@index([lat, lon])
-}

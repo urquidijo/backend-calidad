@@ -1,63 +1,123 @@
-import { PrismaClient, BusStatus } from "@prisma/client";
+// prisma/seed.ts
+import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
-/* ======================== Utils ======================== */
-
+/* ======================== Config rápida ======================== */
+const BUSES_POR_COLEGIO = 2;                  // Menos buses = datos más limpios
+const ESTUDIANTES_POR_BUS = [5, 8];           // Rango [min, max]
+const RUTA_PARADAS_INTERMEDIAS = 0;           // Paradas “fijas” extra entre casas (normalmente 0)
+const DISTANCIA_ENTRE_CASAS_M = 550;          // Separación media entre “clusters” de casas
+const RADIO_CASAS_M = 320;                    // Dispersión (radio) alrededor del corredor
+const DIST_INICIO_DEPOSITO_M = [2200, 3800];  // El depósito (inicio de ruta) desde el colegio
 const NOMBRES = [
-  "Josué","Valentina","Mateo","Camila","Thiago","Isabella","Santiago","Sophia",
-  "Benjamín","Mía","Lucas","Emma","Martina","Diego","Sebastián","Victoria","Emilia","Gabriel",
+  "Valentina","Mateo","Camila","Thiago","Isabella","Santiago","Luciana","Benjamín","Mía","Lucas",
+  "Emma","Martina","Diego","Sebastián","Victoria","Emilia","Gabriel","Antonella","Samuel","Renata",
+  "Agustín","Daniela","Bruno","Julieta","Matías","Zoe","Gael","Regina","Alejandro","Abril",
+];
+const APELLIDOS = [
+  "Suárez","Rojas","Mendoza","Vargas","Flores","Gutiérrez","Ríos","Pérez","Ortiz","Fernández",
+  "Quispe","Romero","Ramírez","Vega","Soria","Rivero","Morales","Arce","López","Torrez",
+  "Añez","Cruz","Aramayo","Montaño","Sandoval","Claros","Salazar","Aramayo","Villarroel","Arancibia",
 ];
 const CURSOS = [
   "1º Primaria","2º Primaria","3º Primaria","4º Primaria","5º Primaria","6º Primaria",
   "1º Secundaria","2º Secundaria","3º Secundaria","4º Secundaria","5º Secundaria","6º Secundaria",
 ];
 
+/* ======================== Utils ======================== */
 function makePrefix(nombre: string) {
   const parts = nombre.replace(/[^\p{L}\p{N}\s]/gu, "").trim().split(/\s+/).slice(0, 3);
   return parts.map(p => p[0]).join("").toUpperCase();
 }
-function randInt(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
+function randInt(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function pick<T>(arr: T[]) { return arr[randInt(0, arr.length - 1)]; }
 function randomCI() {
   const len = randInt(7, 9);
   let s = "";
   for (let i = 0; i < len; i++) s += randInt(0, 9);
   return s;
 }
-
 /** Mueve aprox en metros desde un punto lat/lon (válido para distancias cortas) */
 function offsetMeters(lat: number, lon: number, dNorthM: number, dEastM: number) {
   const dLat = dNorthM / 111_320; // ~ metros por grado
   const dLon = dEastM / (111_320 * Math.cos((lat * Math.PI) / 180));
   return { lat: lat + dLat, lon: lon + dLon };
 }
-
-/** Crea N puntos “paradas” en línea (ligera curvatura), espaciados ~distM entre sí */
-function buildRouteAroundSchool(schoolLat: number, schoolLon: number, nStops = 6, distM = 450) {
-  const baseBearingDeg = randInt(0, 359); // rumbo aleatorio de salida
-  const points: { lat: number; lon: number; nombre: string; orden: number }[] = [];
-  for (let i = 0; i < nStops; i++) {
-    // Pequeña variación para que no sea línea perfecta
-    const jitterN = randInt(-40, 40);
-    const jitterE = randInt(-40, 40);
-    // Progresión a lo largo del rumbo base (norte/este aproximados)
-    const stepNorth = Math.cos((baseBearingDeg * Math.PI) / 180) * distM * i + jitterN;
-    const stepEast  = Math.sin((baseBearingDeg * Math.PI) / 180) * distM * i + jitterE;
-    const p = offsetMeters(schoolLat, schoolLon, stepNorth, stepEast);
-    points.push({ lat: p.lat, lon: p.lon, nombre: `Parada ${i + 1}`, orden: i + 1 });
-  }
-  // Garantiza que la primera parada sea “Colegio”
-  points[0] = { lat: schoolLat, lon: schoolLon, nombre: "Colegio", orden: 1 };
-  return points;
+function deg2rad(d: number) { return (d * Math.PI) / 180; }
+function rad2deg(r: number) { return (r * 180) / Math.PI; }
+/** Genera un punto a distancia D con rumbo (bearing) desde (lat,lon) */
+function moveByBearing(lat: number, lon: number, distanceM: number, bearingDeg: number) {
+  const dn = Math.cos(deg2rad(bearingDeg)) * distanceM;
+  const de = Math.sin(deg2rad(bearingDeg)) * distanceM;
+  return offsetMeters(lat, lon, dn, de);
+}
+/** Haversine (m) */
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371000;
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const la1 = deg2rad(lat1), la2 = deg2rad(lat2);
+  const h = Math.sin(dLat/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-/** Genera un domicilio cerca de la ruta (dentro de un radio en metros) */
-function randomHomeNearRoute(route: { lat: number; lon: number }[], radiusM = 200) {
-  const p = route[randInt(1, Math.max(1, route.length - 1))]; // no la 1ra para evitar amontonamiento en el colegio
-  const dn = randInt(-radiusM, radiusM);
-  const de = randInt(-radiusM, radiusM);
-  return offsetMeters(p.lat, p.lon, dn, de);
+/* ======================== Lógica de ruta ======================== */
+/**
+ * Construye una ruta lógica: DEPOSITO (inicio) → casas ordenadas → colegio (fin)
+ * - Se elige un rumbo base (bearing) y se ubica el depósito a 2–4 km del colegio.
+ * - Se generan “clusters” de casas espaciados a lo largo del corredor; cada casa se dispersa en RADIO_CASAS_M.
+ * - Las casas se ordenan por heurística NN simple desde el depósito con sesgo hacia el colegio.
+ */
+function buildLogicalRoute(
+  schoolLat: number,
+  schoolLon: number,
+  nHouses: number,
+) {
+  const bearingBase = randInt(0, 359);
+
+  // 1) Depósito (punto de salida)
+  const depotDist = randInt(DIST_INICIO_DEPOSITO_M[0], DIST_INICIO_DEPOSITO_M[1]);
+  const depot = moveByBearing(schoolLat, schoolLon, depotDist, bearingBase);
+
+  // 2) Generar “marcas” de corredor entre depósito y colegio
+  //    Posicionamos n clusters aproximadamente equiespaciados entre depósito y colegio
+  const houses: { lat: number; lon: number }[] = [];
+  for (let i = 1; i <= nHouses; i++) {
+    // t en [0.15..0.85] para que queden entre el depósito y la escuela
+    const t = i / (nHouses + 1);
+    const alongM = depotDist * (1 - t); // desde depósito hacia el colegio
+    const center = moveByBearing(schoolLat, schoolLon, alongM, bearingBase);
+    // Dispersión alrededor del corredor
+    const dn = randInt(-RADIO_CASAS_M, RADIO_CASAS_M);
+    const de = randInt(-RADIO_CASAS_M, RADIO_CASAS_M);
+    const home = offsetMeters(center.lat, center.lon, dn, de);
+    houses.push(home);
+  }
+
+  // 3) Orden simple tipo nearest-neighbor desde el depósito
+  const remaining = houses.map((h, idx) => ({ ...h, _i: idx }));
+  const order: typeof remaining = [];
+  let current = { lat: depot.lat, lon: depot.lon };
+  while (remaining.length) {
+    let best = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const d = haversine(current.lat, current.lon, remaining[i].lat, remaining[i].lon);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    const next = remaining.splice(best, 1)[0];
+    order.push(next);
+    current = { lat: next.lat, lon: next.lon };
+  }
+
+  // 4) Paradas finales: Depot (orden 1), casas (2..n+1), Colegio (última)
+  const route = [
+    { nombre: "Depósito", lat: depot.lat, lon: depot.lon },
+    ...order.map((h, idx) => ({ nombre: `Parada Casa ${idx + 1}`, lat: h.lat, lon: h.lon })),
+    { nombre: "Colegio", lat: schoolLat, lon: schoolLon },
+  ];
+
+  return route;
 }
 
 /* ======================== Seeders ======================== */
@@ -78,7 +138,7 @@ async function upsertColegios() {
   console.log("✅ Colegios listos");
 }
 
-async function seedBusesConConductores(busesPorColegio = 3) {
+async function seedBusesConConductores(busesPorColegio = BUSES_POR_COLEGIO) {
   const colegios = await prisma.colegio.findMany({ where: { activo: true } });
   for (const col of colegios) {
     const prefix = makePrefix(col.nombre);
@@ -122,7 +182,7 @@ async function seedBusesConConductores(busesPorColegio = 3) {
   }
 }
 
-async function seedParadasYTelemetria() {
+async function seedRutasParadasTelemetria() {
   const buses = await prisma.bus.findMany({
     where: { activo: true },
     include: { colegio: true },
@@ -132,22 +192,18 @@ async function seedParadasYTelemetria() {
     const col = bus.colegio;
     if (!col?.lat || !col?.lon) continue;
 
-    // Crea ruta de 6 paradas alrededor del colegio
-    const ruta = buildRouteAroundSchool(col.lat, col.lon, 6, 480);
+    // Cantidad de estudiantes target para el bus, usaremos para definir casas y paradas
+    const nStudentsTarget = randInt(ESTUDIANTES_POR_BUS[0], ESTUDIANTES_POR_BUS[1]);
 
-    // Paradas (upsert por (busId, orden))
-    for (const p of ruta) {
-      const uniqueKey = { busId_orden: { busId: bus.id, orden: p.orden } } as any;
-      const data = {
-        busId: bus.id,
-        nombre: p.nombre,
-        orden: p.orden,
-        lat: p.lat,
-        lon: p.lon,
-        activa: true,
-      };
-      // como no tenemos @@unique(busId,orden) por defecto, usamos un find/create
-      const existing = await prisma.parada.findFirst({ where: { busId: bus.id, orden: p.orden } });
+    // Construye ruta lógica (depot → casas → colegio)
+    const route = buildLogicalRoute(col.lat, col.lon, nStudentsTarget);
+
+    // Inserta paradas en orden
+    for (let idx = 0; idx < route.length; idx++) {
+      const p = route[idx];
+      const orden = idx + 1;
+      const existing = await prisma.parada.findFirst({ where: { busId: bus.id, orden } });
+      const data = { busId: bus.id, nombre: p.nombre, orden, lat: p.lat, lon: p.lon, activa: true };
       if (existing) {
         await prisma.parada.update({ where: { id: existing.id }, data });
       } else {
@@ -155,17 +211,20 @@ async function seedParadasYTelemetria() {
       }
     }
 
-    // Telemetría inicial del bus en la 1ra parada (colegio)
+    // Telemetría: el bus arranca en el DEPÓSITO (parada 1)
+    const start = route[0];
     await prisma.telemetriaBus.upsert({
       where: { busId: bus.id },
-      update: { lat: ruta[0].lat, lon: ruta[0].lon, status: BusStatus.NO_INICIADA },
-      create: { busId: bus.id, lat: ruta[0].lat, lon: ruta[0].lon, status: BusStatus.NO_INICIADA },
+      update: { lat: start.lat, lon: start.lon /*, status: null*/ },
+      create: { busId: bus.id, lat: start.lat, lon: start.lon /*, status: null*/ },
     });
+
+    console.log(`🗺 Ruta para bus ${bus.codigo}: ${route.length} puntos (Depósito→Casas→Colegio)`);
   }
-  console.log("📍 Paradas y telemetría inicial listas");
+  console.log("📍 Paradas + telemetría inicial listas");
 }
 
-async function seedEstudiantesYAsignacionConDomicilio() {
+async function seedEstudiantesYAsignacion() {
   const colegios = await prisma.colegio.findMany({ where: { activo: true } });
 
   for (const col of colegios) {
@@ -176,20 +235,29 @@ async function seedEstudiantesYAsignacionConDomicilio() {
     });
     if (!buses.length) continue;
 
-    let studentIndex = 1;
+    let seq = 1;
+
     for (const bus of buses) {
-      // Ruta de este bus (para ubicar casas cerca)
-      const route = bus.paradas.length
-        ? bus.paradas.map(p => ({ lat: p.lat, lon: p.lon }))
-        : [{ lat: col.lat!, lon: col.lon! }];
+      // tomanos todas las paradas “casas” (excluye depósito y colegio)
+      const houseStops = bus.paradas.filter(p => p.nombre!.startsWith("Parada Casa"));
 
-      for (let j = 0; j < 12; j++) {
-        const nombre = NOMBRES[randInt(0, NOMBRES.length - 1)];
-        const curso = CURSOS[randInt(0, CURSOS.length - 1)];
-        const codigo = `${makePrefix(col.nombre)}-${String(studentIndex).padStart(3, "0")}`;
+      // número objetivo de estudiantes para este bus
+      const nStudentsTarget = randInt(ESTUDIANTES_POR_BUS[0], ESTUDIANTES_POR_BUS[1]);
 
-        // Genera una casa cerca de la ruta
-        const home = randomHomeNearRoute(route, 220);
+      for (let j = 0; j < nStudentsTarget; j++) {
+        const nombre = `${pick(NOMBRES)} ${pick(APELLIDOS)}`;
+        const curso = pick(CURSOS);
+        const codigo = `${makePrefix(col.nombre)}-${String(seq).padStart(3, "0")}`;
+
+        // Asignamos domicilio alrededor de una parada-casa concreta (espaciado mayor)
+        const anchor = houseStops.length
+          ? houseStops[randInt(0, houseStops.length - 1)]
+          : (bus.paradas[1] ?? bus.paradas[0]); // fallback
+
+        // Genera una casa alrededor del anchor (con dispersión amplia)
+        const dn = randInt(-RADIO_CASAS_M, RADIO_CASAS_M);
+        const de = randInt(-RADIO_CASAS_M, RADIO_CASAS_M);
+        const home = offsetMeters(anchor.lat, anchor.lon, dn, de);
 
         const estudiante = await prisma.estudiante.upsert({
           where: { colegioId_codigo: { colegioId: col.id, codigo } },
@@ -212,10 +280,10 @@ async function seedEstudiantesYAsignacionConDomicilio() {
           create: { estudianteId: estudiante.id, busId: bus.id },
         });
 
-        studentIndex++;
+        seq++;
       }
+      console.log(`👧👦 ${col.nombre} / ${bus.codigo}: ${nStudentsTarget} estudiantes asignados`);
     }
-    console.log(`👧👦 ${col.nombre}: domicilios + asignaciones listas`);
   }
 }
 
@@ -223,9 +291,9 @@ async function seedEstudiantesYAsignacionConDomicilio() {
 
 async function main() {
   await upsertColegios();
-  await seedBusesConConductores(3);
-  await seedParadasYTelemetria();                 // crea paradas + telemetría
-  await seedEstudiantesYAsignacionConDomicilio(); // crea estudiantes con homeLat/homeLon
+  await seedBusesConConductores(BUSES_POR_COLEGIO);
+  await seedRutasParadasTelemetria();   // crea rutas lógicas y telemetría en depósito
+  await seedEstudiantesYAsignacion();   // crea estudiantes con casas más separadas y asigna al bus
 }
 
 main()

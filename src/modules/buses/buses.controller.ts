@@ -11,7 +11,6 @@ import {
 } from '@nestjs/common';
 import { BusesService } from './buses.service';
 import { UpdateBusLocationDto } from './dto/update-location.dto';
-import { UpdateBusStatusDto } from './dto/update-status.dto';
 
 type Direction = 'IDA' | 'VUELTA';
 
@@ -58,13 +57,4 @@ export class BusesController {
     return this.service.postLocation(id, dto);
   }
 
-  // Actualizar estado del bus (NO_INICIADA, EN_RUTA, EN_COLEGIO)
-  @Post(':id/status')
-  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  async postStatus(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateBusStatusDto,
-  ) {
-    return this.service.postStatus(id, dto);
-  }
 }
