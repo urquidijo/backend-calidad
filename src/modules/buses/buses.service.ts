@@ -2,33 +2,39 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 type LatLng = { lat: number; lon: number };
-type Waypoint = { tipo: 'CASA'|'COLEGIO'; id?: number; nombre: string; lat: number; lon: number };
+type Waypoint = {
+  tipo: 'CASA' | 'COLEGIO';
+  id?: number;
+  nombre: string;
+  lat: number;
+  lon: number;
+};
 
 const prisma = new PrismaClient();
 
 type SimParams = {
-  minSpeed: number;  // m/s
-  maxSpeed: number;  // m/s
-  accel: number;     // m/s^2
-  decel: number;     // m/s^2
+  minSpeed: number; // m/s
+  maxSpeed: number; // m/s
+  accel: number; // m/s^2
+  decel: number; // m/s^2
   brakeDist: number; // m
   dwellCasa: number; // s
   dwellColegio: number; // s
-  tickMs: number;    // ms
+  tickMs: number; // ms
 };
 
 type SimState = {
   timer?: ReturnType<typeof setInterval>;
   waypoints: Waypoint[];
-  polyline: LatLng[];       // puntos = waypoints en línea
-  cum: number[];            // distancias acumuladas
-  segLens: number[];        // long por segmento
+  polyline: LatLng[]; // puntos = waypoints en línea
+  cum: number[]; // distancias acumuladas
+  segLens: number[]; // long por segmento
   total: number;
-  s: number;                // distancia recorrida sobre polyline
-  v: number;                // velocidad actual m/s
-  at?: number;              // epoch ms última actualización
-  dwellUntil?: number|null; // epoch ms
-  idxNode: number;          // índice de nodo actual (aprox)
+  s: number; // distancia recorrida sobre polyline
+  v: number; // velocidad actual m/s
+  at?: number; // epoch ms última actualización
+  dwellUntil?: number | null; // epoch ms
+  idxNode: number; // índice de nodo actual (aprox)
   heading: number;
   reachedEnd: boolean;
   params: SimParams;
@@ -66,12 +72,16 @@ export class BusesService {
     });
     if (!bus) throw new NotFoundException('Bus no encontrado');
     const c = bus.colegio;
-    if (!c?.lat || !c?.lon) throw new NotFoundException('Colegio sin coordenadas');
+    if (!c?.lat || !c?.lon)
+      throw new NotFoundException('Colegio sin coordenadas');
     return { lat: c.lat, lon: c.lon, nombre: c.nombre };
   }
 
   /* ================== Ruta por casas ================== */
-  async getRutaPorCasas(busId: number, startFrom: 'colegio'|'primeraCasa' = 'primeraCasa') {
+  async getRutaPorCasas(
+    busId: number,
+    startFrom: 'colegio' | 'primeraCasa' = 'primeraCasa',
+  ) {
     const casas = await this.getEstudiantesDeBus(busId);
     if (casas.length === 0) return { waypoints: [] };
 
@@ -79,7 +89,12 @@ export class BusesService {
 
     // Si startFrom=colegio, arrancamos desde el colegio y hacemos NN; si no, NN “libre” y luego colegio al final.
     let ordered = nearestNeighborOrder(
-      casas.map((h) => ({ id: h.id, nombre: h.nombre, lat: h.homeLat, lon: h.homeLon })),
+      casas.map((h) => ({
+        id: h.id,
+        nombre: h.nombre,
+        lat: h.homeLat,
+        lon: h.homeLon,
+      })),
       startFrom === 'colegio' ? { lat: colegio.lat, lon: colegio.lon } : null,
     );
 
@@ -92,16 +107,25 @@ export class BusesService {
     }));
 
     // Colegio al final
-    waypoints.push({ tipo: 'COLEGIO', nombre: colegio.nombre, lat: colegio.lat, lon: colegio.lon });
+    waypoints.push({
+      tipo: 'COLEGIO',
+      nombre: colegio.nombre,
+      lat: colegio.lat,
+      lon: colegio.lon,
+    });
 
     return { waypoints };
   }
 
   /* ================== Simulación ================== */
-  async startSimulation(busId: number, body: Partial<SimParams> & { recomputeOrder?: boolean }) {
+  async startSimulation(
+    busId: number,
+    body: Partial<SimParams> & { recomputeOrder?: boolean },
+  ) {
     // 1) Waypoints
     const { waypoints } = await this.getRutaPorCasas(busId, 'primeraCasa');
-    if (!waypoints.length) throw new NotFoundException('No hay waypoints (casas/colegio)');
+    if (!waypoints.length)
+      throw new NotFoundException('No hay waypoints (casas/colegio)');
 
     // 2) Parámetros
     const params: SimParams = {
@@ -116,7 +140,10 @@ export class BusesService {
     };
 
     // 3) Construcción de polyline (pasa por cada waypoint en línea recta)
-    const polyline: LatLng[] = waypoints.map((w) => ({ lat: w.lat, lon: w.lon }));
+    const polyline: LatLng[] = waypoints.map((w) => ({
+      lat: w.lat,
+      lon: w.lon,
+    }));
     const { segLens, cum, total } = precomputePolyline(polyline);
 
     // 4) Si ya hay una sim, detenla
@@ -124,17 +151,26 @@ export class BusesService {
 
     // 5) Estado inicial
     const state: SimState = {
-      waypoints, polyline, segLens, cum, total,
-      s: 0, v: 0, idxNode: 0, heading: 0, at: Date.now(),
+      waypoints,
+      polyline,
+      segLens,
+      cum,
+      total,
+      s: 0,
+      v: 0,
+      idxNode: 0,
+      heading: 0,
+      at: Date.now(),
       dwellUntil: Date.now() + params.dwellCasa * 1000, // breve espera inicial
-      reachedEnd: false, params,
+      reachedEnd: false,
+      params,
     };
 
     // 6) Timer
     state.timer = setInterval(async () => {
       tickSimulation(state);
-      // Persistencia liviana a TelemetriaBus
-      const pos = pointAtS(state, state.s) ?? polyline[0];
+
+      const pos = pointAtS(state, state.s) ?? state.polyline[0];
       await prisma.telemetriaBus.upsert({
         where: { busId },
         create: { busId, lat: pos.lat, lon: pos.lon, heading: state.heading },
@@ -143,6 +179,7 @@ export class BusesService {
 
       if (state.reachedEnd && state.timer) {
         clearInterval(state.timer);
+        state.timer = undefined;
         sims.delete(busId);
       }
     }, state.params.tickMs);
@@ -182,7 +219,13 @@ export class BusesService {
     // Si no hay sim activa, intenta TelemetriaBus como fallback
     const t = await prisma.telemetriaBus.findUnique({ where: { busId } });
     if (t) {
-      return { lat: t.lat, lon: t.lon, heading: t.heading ?? 0, at: Date.now(), simulated: false };
+      return {
+        lat: t.lat,
+        lon: t.lon,
+        heading: t.heading ?? 0,
+        at: Date.now(),
+        simulated: false,
+      };
     }
 
     throw new NotFoundException('Sin telemetría/simulación para este bus');
@@ -191,16 +234,25 @@ export class BusesService {
 
 /* ============== Helpers de geometría/simulación ============== */
 
-function toRad(x: number) { return (x * Math.PI) / 180; }
-function toDeg(x: number) { return (x * 180) / Math.PI; }
-function clamp(x: number, a: number, b: number) { return Math.max(a, Math.min(b, x)); }
+function toRad(x: number) {
+  return (x * Math.PI) / 180;
+}
+function toDeg(x: number) {
+  return (x * 180) / Math.PI;
+}
+function clamp(x: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, x));
+}
 
 function haversine(a: LatLng, b: LatLng) {
   const R = 6371000;
   const dLat = toRad(b.lat - a.lat);
   const dLon = toRad(b.lon - a.lon);
-  const la1 = toRad(a.lat), la2 = toRad(b.lat);
-  const h = Math.sin(dLat/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;
+  const la1 = toRad(a.lat),
+    la2 = toRad(b.lat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
@@ -210,7 +262,9 @@ function bearing(a: LatLng, b: LatLng) {
   const la2 = toRad(b.lat);
   const dLon = toRad(b.lon - a.lon);
   const y = Math.sin(dLon) * Math.cos(la2);
-  const x = Math.cos(la1)*Math.sin(la2) - Math.sin(la1)*Math.cos(la2)*Math.cos(dLon);
+  const x =
+    Math.cos(la1) * Math.sin(la2) -
+    Math.sin(la1) * Math.cos(la2) * Math.cos(dLon);
   const brng = Math.atan2(y, x);
   return (toDeg(brng) + 360) % 360;
 }
@@ -219,7 +273,7 @@ function precomputePolyline(coords: LatLng[]) {
   const segLens: number[] = [];
   const cum: number[] = [0];
   for (let i = 0; i < coords.length - 1; i++) {
-    const d = haversine(coords[i], coords[i+1]);
+    const d = haversine(coords[i], coords[i + 1]);
     segLens.push(d);
     cum.push(cum[cum.length - 1] + d);
   }
@@ -228,7 +282,8 @@ function precomputePolyline(coords: LatLng[]) {
 
 function findSegmentIndex(cum: number[], s: number) {
   if (cum.length <= 1) return 0;
-  let lo = 0, hi = cum.length - 1;
+  let lo = 0,
+    hi = cum.length - 1;
   while (lo < hi - 1) {
     const mid = (lo + hi) >> 1;
     if (s < cum[mid]) hi = mid;
@@ -237,13 +292,22 @@ function findSegmentIndex(cum: number[], s: number) {
   return Math.max(0, Math.min(lo, cum.length - 2));
 }
 
-function pointAtS(state: { polyline: LatLng[], cum: number[], segLens: number[], total: number }, s: number): LatLng | null {
+function pointAtS(
+  state: {
+    polyline: LatLng[];
+    cum: number[];
+    segLens: number[];
+    total: number;
+  },
+  s: number,
+): LatLng | null {
   const { polyline: coords, cum, segLens, total } = state;
   if (coords.length < 2) return coords[0] ?? null;
   s = clamp(s, 0, total);
   const idx = findSegmentIndex(cum, s);
   const segLen = segLens[idx] || 0;
-  const A = coords[idx], B = coords[idx + 1];
+  const A = coords[idx],
+    B = coords[idx + 1];
   if (segLen <= 0) return A;
   const t = clamp((s - cum[idx]) / segLen, 0, 1);
   return {
@@ -261,10 +325,17 @@ function nearestNeighborOrder(
 
   let current: { lat: number; lon: number };
   if (start) {
-    let idx = 0, best = Infinity;
+    let idx = 0,
+      best = Infinity;
     for (let i = 0; i < remaining.length; i++) {
-      const d = haversine(start, { lat: remaining[i].lat, lon: remaining[i].lon });
-      if (d < best) { best = d; idx = i; }
+      const d = haversine(start, {
+        lat: remaining[i].lat,
+        lon: remaining[i].lon,
+      });
+      if (d < best) {
+        best = d;
+        idx = i;
+      }
     }
     const first = remaining.splice(idx, 1)[0];
     result.push(first);
@@ -277,10 +348,17 @@ function nearestNeighborOrder(
   }
 
   while (remaining.length) {
-    let idx = 0, best = Infinity;
+    let idx = 0,
+      best = Infinity;
     for (let i = 0; i < remaining.length; i++) {
-      const d = haversine(current, { lat: remaining[i].lat, lon: remaining[i].lon });
-      if (d < best) { best = d; idx = i; }
+      const d = haversine(current, {
+        lat: remaining[i].lat,
+        lon: remaining[i].lon,
+      });
+      if (d < best) {
+        best = d;
+        idx = i;
+      }
     }
     const next = remaining.splice(idx, 1)[0];
     result.push(next);
@@ -294,7 +372,7 @@ function normalizeAngleDelta(fromDeg: number, toDeg: number) {
   return ((toDeg - fromDeg + 540) % 360) - 180;
 }
 function normalizeHeading(h: number) {
-  return (h % 360 + 360) % 360;
+  return ((h % 360) + 360) % 360;
 }
 
 function tickSimulation(s: SimState) {
@@ -304,28 +382,45 @@ function tickSimulation(s: SimState) {
 
   if (s.reachedEnd) return;
 
-  // Dwell?
+  // Dwell activo
   if (s.dwellUntil && now < s.dwellUntil) return;
   if (s.dwellUntil && now >= s.dwellUntil) s.dwellUntil = null;
 
-  // Distancia a fin de segmento
+  // Índice y distancia a fin de segmento
   const idx = findSegmentIndex(s.cum, s.s);
   const distToSegEnd = s.cum[idx + 1] - s.s;
 
-  // Objetivo de velocidad
-  const target = distToSegEnd < s.params.brakeDist
-    ? Math.max(s.params.minSpeed * 0.3, (distToSegEnd / s.params.brakeDist) * (s.params.maxSpeed))
-    : s.params.maxSpeed;
+  // Velocidad objetivo con frenado suave
+  const target =
+    distToSegEnd < s.params.brakeDist
+      ? Math.max(
+          s.params.minSpeed * 0.3,
+          (distToSegEnd / s.params.brakeDist) * s.params.maxSpeed,
+        )
+      : s.params.maxSpeed;
 
-  const accel = (target >= s.v) ? s.params.accel : -s.params.decel;
+  const accel = target >= s.v ? s.params.accel : -s.params.decel;
   s.v = clamp(s.v + accel * dt, 0, s.params.maxSpeed);
 
   // Integración
   s.s += s.v * dt;
+
+  // --- SNAP A ÚLTIMO NODO (COLEGIO) ---
+  const lastIdx = s.cum.length - 1;
+  const sLast = s.cum[lastIdx];
+  const SNAP_M = 3.0; // si estamos a <3m del último nodo, pegamos
+  if (Math.abs(s.s - sLast) <= SNAP_M) {
+    s.s = sLast;
+  }
+
+  // ¿llegó al final?
   if (s.s >= s.total) {
     s.s = s.total;
     s.v = 0;
+    // dwell corto final opcional y FIN
+    s.dwellUntil = now + s.params.dwellColegio * 1000;
     s.reachedEnd = true;
+    return;
   }
 
   // Heading
@@ -335,23 +430,29 @@ function tickSimulation(s: SimState) {
   const delta = normalizeAngleDelta(s.heading, hNext);
   s.heading = normalizeHeading(s.heading + delta * 0.2);
 
-  // Dwell en nodos (cuando estamos muy cerca)
+  // Dwell en nodos intermedios
   const nodeIdx = nearestNodeIndex(s.cum, s.s);
   const sNode = s.cum[nodeIdx];
-  if (Math.abs(s.s - sNode) < 2.0) {
-    const isLast = nodeIdx === s.cum.length - 1;
-    const isSchool = isLast || s.waypoints[nodeIdx]?.tipo === 'COLEGIO';
-    const dwellBase = isSchool ? s.params.dwellColegio : s.params.dwellCasa;
-    s.dwellUntil = now + dwellBase * 1000;
-    s.v = 0;
+  // Umbral más generoso para “tocar” el nodo
+  if (Math.abs(s.s - sNode) < 2.5) {
+    const isLast = nodeIdx === lastIdx;
+    const dwellBase = isLast ? s.params.dwellColegio : s.params.dwellCasa;
+    if (!s.dwellUntil) {
+      s.dwellUntil = now + dwellBase * 1000;
+      s.v = 0;
+    }
   }
 }
 
 function nearestNodeIndex(cum: number[], s: number) {
-  let bestI = 0, best = Infinity;
+  let bestI = 0,
+    best = Infinity;
   for (let i = 0; i < cum.length; i++) {
     const d = Math.abs(cum[i] - s);
-    if (d < best) { best = d; bestI = i; }
+    if (d < best) {
+      best = d;
+      bestI = i;
+    }
   }
   return bestI;
 }
