@@ -7,7 +7,7 @@ import { Rol } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
-  constructor(private prisma: PrismaService, private jwt: JwtService) {}
+  constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService) {}
 
   async validateUser(email: string, password: string) {
     // normaliza email (mismo criterio que register)
@@ -35,7 +35,7 @@ export class AuthService {
 
     // devuelve sin el hash
     const { hashPassword, ...safe } = user;
-    return safe; // { id, email, rol, nombre, activo }
+    return safe; 
   }
 
   sign(user: { id: number; email: string; rol: Rol }) {
@@ -61,7 +61,7 @@ export class AuthService {
       select: { id: true, email: true, rol: true, nombre: true },
     });
 
-    const access_token = this.sign({ id: user.id, email: user.email, rol: user.rol as Rol });
+    const access_token = this.sign({ id: user.id, email: user.email, rol: user.rol });
     return { access_token, user };
   }
 }

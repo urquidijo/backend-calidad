@@ -1,12 +1,10 @@
-// src/modules/estudiante/estudiante.service.ts
-import { Injectable, NotFoundException } from "@nestjs/common";
-import { PrismaService } from "src/prisma/prisma.service";
-
+// src/modules/estudianteBus/estudiante.service.ts
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class EstudianteBusService {
   constructor(private readonly prisma: PrismaService) {}
-
 
   async findBusByStudent(studentId: number) {
     // Verificar estudiante existe (opcional but safe)
@@ -14,7 +12,7 @@ export class EstudianteBusService {
       where: { id: studentId },
       select: { id: true, nombre: true, colegioId: true },
     });
-    if (!estudiante) throw new NotFoundException("Estudiante no encontrado");
+    if (!estudiante) throw new NotFoundException('Estudiante no encontrado');
 
     // Buscar asignación en EstudianteBus (tomamos el primero si hay varios)
     const asign = await this.prisma.estudianteBus.findFirst({
@@ -27,7 +25,7 @@ export class EstudianteBusService {
           },
         },
       },
-      orderBy: { createdAt: "desc" }, // preferir la asignación más reciente
+      orderBy: { createdAt: 'desc' }, // preferir la asignación más reciente
     });
 
     if (!asign) return null;
@@ -45,7 +43,7 @@ export class EstudianteBusService {
       driver_phone: b.conductor?.telefono ?? null,
       status: null, // si tienes tabla de estado, puedes mapear aquí
       last_location: null, // si tienes tabla de locations -> incluir aquí
-      colegioId: b.colegioId ?? (b.colegio?.id ?? null),
+      colegioId: b.colegioId ?? b.colegio?.id ?? null,
     };
   }
 }
