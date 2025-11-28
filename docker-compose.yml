@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  api:
+    container_name: backend-calidad-api
+    build: .
+    env_file:
+      - .env.prod
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+
+  db:
+    container_name: backend-calidad-db
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 12445341
+      POSTGRES_DB: backend_calidad
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
