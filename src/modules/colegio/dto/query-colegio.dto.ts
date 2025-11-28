@@ -1,13 +1,16 @@
-import { IsInt, IsOptional, IsString, Min } from "class-validator";
-import { Type } from "class-transformer";
+import { IsBooleanString, IsOptional, IsString } from "class-validator";
 
 export class QueryColegioDto {
-  @IsOptional() @IsString()
-  search?: string;  // nombre o dirección
+  @IsOptional()
+  @IsString()
+  nombre?: string;
 
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
-  skip?: number = 0;
+  @IsOptional()
+  @IsString()
+  search?: string;
 
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
-  take?: number = 20;
+  // Boolean string: "true" | "false"
+  @IsOptional()
+  @IsBooleanString()
+  activo?: string;
 }

@@ -283,7 +283,7 @@ describe('Integración (E2E)', () => {
   // ------------------------------------------
   // TEST 5: Buses - location usando TelemetriaBus (sin sim)
   // ------------------------------------------
-  it('Buses: debería devolver ubicación desde TelemetriaBus cuando no hay simulación activa', async () => {
+  it('Buses: debería devolver ubicación desde TelemetriaBus', async () => {
     const uniqueSuffix = Date.now();
 
     // 1) colegio

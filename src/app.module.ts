@@ -8,6 +8,9 @@ import { EstudianteModule } from './modules/estudiante/estudiante.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BusesModule } from './modules/buses/buses.module';
 import { EstudianteBusModule } from './modules/estudianteBus/estudianteBus.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { EstudianteAdminModule } from './modules/estudiante-admin/estudiante-admin.module';
+import { PadreEstudianteAdminModule } from './modules/padre-estudiante-admin/padre-estudiante-admin.module';
 
 @Module({
   imports: [
@@ -20,6 +23,9 @@ import { EstudianteBusModule } from './modules/estudianteBus/estudianteBus.modul
     EstudianteModule,
     BusesModule,
     EstudianteBusModule,
+    DashboardModule,
+    EstudianteAdminModule,
+    PadreEstudianteAdminModule,
   ],
 })
 export class AppModule {}

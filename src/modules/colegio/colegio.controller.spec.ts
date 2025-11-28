@@ -3,7 +3,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { ColegiosController } from "./colegio.controller";
 import { ColegiosService } from "./colegio.service";
 import { CreateColegioDto } from "./dto/create-colegio.dto";
-import { QueryColegioDto } from "./dto/query-colegio.dto";
+import { QueryColegioDto } from "./dto/query-colegio.dto.ts";
 
 const serviceMock = {
   create: jest.fn(),
