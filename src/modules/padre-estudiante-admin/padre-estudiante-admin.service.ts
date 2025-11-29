@@ -3,7 +3,7 @@ import { PrismaService } from "src/prisma/prisma.service";
 
 @Injectable()
 export class PadreEstudianteAdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async listAll() {
     const rows = await this.prisma.padreEstudiante.findMany({

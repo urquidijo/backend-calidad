@@ -6,7 +6,7 @@ import { UpdateEstudianteDto } from "./dto/update-estudiante.dto";
 
 @Injectable()
 export class EstudianteAdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   create(dto: CreateEstudianteDto) {
     return this.prisma.estudiante.create({
